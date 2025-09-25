@@ -40,6 +40,13 @@
 
 #include <d3d11_4.h>
 #include <dxgi1_6.h>
+#include <d3dcompiler.h>
+#include <wrl/client.h>
+#pragma comment(lib, "D3DCompiler.lib")
 
 #include <algorithm>
 #include <cmath>
+#include <thread>
+#include <atomic>
+#include <chrono>
+#include <cstring>

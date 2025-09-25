@@ -7,7 +7,6 @@
 #endif
 
 using namespace winrt;
-using namespace Microsoft::UI::Xaml;
 
 namespace
 {
@@ -34,7 +33,7 @@ namespace winrt::Winvert4::implementation
         }
     }
 
-    void App::OnLaunched(Microsoft::UI::Xaml::LaunchActivatedEventArgs const&)
+    void App::OnLaunched(winrt::Microsoft::UI::Xaml::LaunchActivatedEventArgs const&)
     {
         // Create and show the main window
         m_window = make<winrt::Winvert4::implementation::MainWindow>();

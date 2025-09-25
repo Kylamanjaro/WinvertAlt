@@ -47,6 +47,36 @@ namespace winrt::Winvert4::implementation
         void ReleaseScreenBitmap();
         RECT MakeRectFromPoints(POINT a, POINT b) const;
         void OnSelectionCompleted(RECT sel); // post-selection hook
+
+        // ----- D3D11 Desktop Duplication effect window -----
+        void ShowEffectAt(RECT sel);
+        void HideEffect();
+
+        HWND m_effectHwnd{ nullptr };
+        RECT m_effectRect{ 0,0,0,0 };
+
+        // D3D11 resources
+        ::Microsoft::WRL::ComPtr<ID3D11Device> m_d3d;
+        ::Microsoft::WRL::ComPtr<ID3D11DeviceContext> m_ctx;
+        ::Microsoft::WRL::ComPtr<IDXGIFactory2> m_factory;
+        ::Microsoft::WRL::ComPtr<IDXGISwapChain1> m_swapChain;
+
+        // Desktop duplication (per-output)
+        ::Microsoft::WRL::ComPtr<IDXGIOutputDuplication> m_dup;
+        RECT m_outputRect{ 0,0,0,0 };
+
+        // Pipeline
+        ::Microsoft::WRL::ComPtr<ID3D11VertexShader> m_vs;
+        ::Microsoft::WRL::ComPtr<ID3D11PixelShader>  m_ps;
+        ::Microsoft::WRL::ComPtr<ID3D11InputLayout>  m_il;
+        ::Microsoft::WRL::ComPtr<ID3D11Buffer>       m_vb;
+        ::Microsoft::WRL::ComPtr<ID3D11Buffer>       m_cb;
+        ::Microsoft::WRL::ComPtr<ID3D11SamplerState> m_samp;
+
+        struct CBData { float scale[2]; float offset[2]; };
+
+        std::thread m_renderThread;
+        std::atomic<bool> m_run{ false };
     };
 }
 

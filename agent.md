@@ -1,7 +1,7 @@
 # agents.md
 
 ## Project Overview
-This project is a **Windows desktop application** that replicates and extends the functionality of the **Windows Magnification API**, but implemented with **DXGI Desktop Duplication** and **Direct3D 11** instead of GDI.  
+This project is a **Windows desktop application** that replicates and extends the functionality of the **Windows Magnification API**, but implemented with **DXGI Desktop Duplication** and **Direct3D 11** instead of GDI.
 
 The application presents a **rectangular magnifier window** that displays a user-selected portion of the desktop, with GPU-accelerated color effects applied in real time. It is intended to be distributed through the **Microsoft Store** as a packaged (MSIX) application.
 
