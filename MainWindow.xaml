@@ -9,7 +9,7 @@
     mc:Ignorable="d"
     Title="Winvert4">
 
-    <Grid>
-
+    <Grid PointerPressed="OnPointerPressed" PointerMoved="OnPointerMoved" PointerReleased="OnPointerReleased">
+        <Canvas x:Name="SelectionOverlay" Visibility="Collapsed"/>
     </Grid>
 </Window>
