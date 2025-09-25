@@ -7,30 +7,23 @@ namespace winrt::Winvert4::implementation
     {
         MainWindow();
 
-        // Keep these if referenced elsewhere
+        // Optional placeholders if referenced elsewhere
         int32_t MyProperty();
         void MyProperty(int32_t value);
 
-        // Your existing hotkey calls this; we route it to StartScreenSelection()
+        // Entry point to start snipping; called from App hotkey
         void ToggleSnipping();
 
-        // New: snipping-tool style selection
+        // Snipping-tool style selection (Win32 overlay)
         void StartScreenSelection();
 
-        // (If you're still wiring XAML pointer handlers, you can keep these public.
-        // They are no-ops in this implementation.)
-        void OnPointerPressed(
-            winrt::Windows::Foundation::IInspectable const&,
-            winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const&) {
-        }
-        void OnPointerMoved(
-            winrt::Windows::Foundation::IInspectable const&,
-            winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const&) {
-        }
-        void OnPointerReleased(
-            winrt::Windows::Foundation::IInspectable const&,
-            winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const&) {
-        }
+        // (If your XAML still references these, keep as no-ops)
+        void OnPointerPressed(winrt::Windows::Foundation::IInspectable const&,
+                              winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const&) {}
+        void OnPointerMoved(winrt::Windows::Foundation::IInspectable const&,
+                            winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const&) {}
+        void OnPointerReleased(winrt::Windows::Foundation::IInspectable const&,
+                               winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const&) {}
 
     private:
         // ----- Selection overlay (Win32) -----
@@ -53,7 +46,7 @@ namespace winrt::Winvert4::implementation
         void CaptureScreenBitmap();
         void ReleaseScreenBitmap();
         RECT MakeRectFromPoints(POINT a, POINT b) const;
-        void OnSelectionCompleted(RECT sel); // hook for post-selection action
+        void OnSelectionCompleted(RECT sel); // post-selection hook
     };
 }
 

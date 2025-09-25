@@ -5,14 +5,14 @@
 #include <restrictederrorinfo.h>
 #include <hstring.h>
 
-// Avoid macro collision with Storyboard::GetCurrentTime
+// Avoid conflict with Storyboard::GetCurrentTime
 #undef GetCurrentTime
 
 // ---- Link required Win32 libs ----
 #pragma comment(lib, "Gdi32.lib")
 #pragma comment(lib, "User32.lib")
 
-// C++/WinRT & WinUI
+// ---- C++/WinRT & Windows App SDK ----
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.ApplicationModel.Activation.h>
