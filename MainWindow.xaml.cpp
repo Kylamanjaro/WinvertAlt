@@ -356,14 +356,32 @@ namespace winrt::Winvert4::implementation
         if (!m_effectHwnd) return;
 
         ShowWindow(m_effectHwnd, SW_SHOWNOACTIVATE);
+        // Exclude our overlay from desktop duplication/screen capture using display affinity
+        {
+            if (!SetWindowDisplayAffinity(m_effectHwnd, WDA_EXCLUDEFROMCAPTURE))
+            {
+                // Fallback for older OS: may at least black out via WDA_MONITOR
+                SetWindowDisplayAffinity(m_effectHwnd, WDA_MONITOR);
+            }
+        }
 
-        // Create D3D11 device
+        // Pick output for duplication first; create device on that adapter
+        ::Microsoft::WRL::ComPtr<IDXGIOutput1> pickedOut;
+        RECT outRect{};
+        pickedOut = PickOutputForRect(sel, outRect);
+        if (!pickedOut) return;
+        m_outputRect = outRect;
+
+        ::Microsoft::WRL::ComPtr<IDXGIAdapter> pickedAdapter;
+        pickedOut->GetParent(IID_PPV_ARGS(&pickedAdapter));
+
+        // Create D3D11 device on the picked adapter
         UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
 #if defined(_DEBUG)
         // flags |= D3D11_CREATE_DEVICE_DEBUG;
 #endif
         D3D_FEATURE_LEVEL flOut;
-        if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, nullptr, 0,
+        if (FAILED(D3D11CreateDevice(pickedAdapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, flags, nullptr, 0,
                                      D3D11_SDK_VERSION, &m_d3d, &flOut, &m_ctx)))
         {
             return;
@@ -391,14 +409,8 @@ namespace winrt::Winvert4::implementation
             factory2->CreateSwapChainForHwnd(m_d3d.Get(), m_effectHwnd, &sd, nullptr, nullptr, &m_swapChain);
         }
 
-        // Pick output for duplication
-        {
-            RECT outRect{};
-            auto out1 = PickOutputForRect(sel, outRect);
-            if (!out1) return;
-            m_outputRect = outRect;
-            out1->DuplicateOutput(m_d3d.Get(), &m_dup);
-        }
+        // Create duplication on the picked output and our device
+        pickedOut->DuplicateOutput(m_d3d.Get(), &m_dup);
 
         // Create pipeline (fullscreen quad + invert PS)
         {
@@ -506,8 +518,11 @@ float4 main(float4 pos:SV_Position, float2 uv:TEXCOORD0) : SV_Target {
                 float clear[4] = { 0,0,0,0 };
                 m_ctx->ClearRenderTargetView(rtv.Get(), clear);
                 m_ctx->Draw(6, 0);
-                m_swapChain->Present(1, 0);
+                m_swapChain->Present(1, 0); // sync interval 1 = vblank
 
+                // Unbind SRV before releasing the duplication frame to avoid hazards
+                ID3D11ShaderResourceView* nullSrv[1] = { nullptr };
+                m_ctx->PSSetShaderResources(0, 1, nullSrv);
                 m_dup->ReleaseFrame();
             }
         });

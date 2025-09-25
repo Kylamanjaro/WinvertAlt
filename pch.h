@@ -42,7 +42,9 @@
 #include <dxgi1_6.h>
 #include <d3dcompiler.h>
 #include <wrl/client.h>
+#include <dwmapi.h>
 #pragma comment(lib, "D3DCompiler.lib")
+#pragma comment(lib, "Dwmapi.lib")
 
 #include <algorithm>
 #include <cmath>
@@ -50,3 +52,13 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+
+// Some SDKs may not yet expose this newer DWM attribute
+#ifndef DWMWA_EXCLUDED_FROM_CAPTURE
+#define DWMWA_EXCLUDED_FROM_CAPTURE 25
+#endif
+
+// Some SDKs may not expose the newer display affinity
+#ifndef WDA_EXCLUDEFROMCAPTURE
+#define WDA_EXCLUDEFROMCAPTURE 0x00000011
+#endif
