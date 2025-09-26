@@ -58,6 +58,7 @@
 #include <string>
 #include <debugapi.h>
 #include <mutex>
+#include <condition_variable>
 
 
 // Some SDKs may not yet expose this newer DWM attribute

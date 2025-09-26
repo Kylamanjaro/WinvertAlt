@@ -54,6 +54,11 @@ void EffectWindow::Show()
         return;
     }
     m_d3d->GetImmediateContext(&m_ctx);
+    if (!m_ctx)
+    {
+        winvert4::Log("EffectWindow::Show GetImmediateContext returned null context");
+        return;
+    }
 
     // Register a basic window class
     constexpr wchar_t kEffectWndClass[] = L"Winvert4_EffectWindow";
@@ -75,10 +80,36 @@ void EffectWindow::Show()
         kEffectWndClass, L"", WS_POPUP,
         m_desktopRect.left, m_desktopRect.top, m_desktopRect.right - m_desktopRect.left, m_desktopRect.bottom - m_desktopRect.top,
         nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
-    if (!m_hwnd) { winvert4::Log("EffectWindow::Show failed to create HWND\n"); return; }
+    if (!m_hwnd) { winvert4::Log("EffectWindow::Show failed to create HWND"); return; }
+
+    winvert4::Logf("EW: created HWND=%p size=(%ldx%ld)", (void*)m_hwnd,
+        m_desktopRect.right - m_desktopRect.left,
+        m_desktopRect.bottom - m_desktopRect.top);
+
+    // Exclude this window from capture to avoid self-capture artifacts (white window)
+    BOOL okAffinity = SetWindowDisplayAffinity(m_hwnd, WDA_EXCLUDEFROMCAPTURE);
+    if (!okAffinity)
+    {
+        DWORD gle = GetLastError();
+        winvert4::Logf("EW: SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE) failed err=%lu", gle);
+    }
+    else
+    {
+        winvert4::Log("EW: SetWindowDisplayAffinity applied");
+    }
+
+    BOOL exclude = TRUE;
+    HRESULT hrDwm = DwmSetWindowAttribute(m_hwnd, DWMWA_EXCLUDED_FROM_CAPTURE, &exclude, sizeof(exclude));
+    if (FAILED(hrDwm))
+    {
+        winvert4::Logf("EW: DwmSetWindowAttribute(DWMWA_EXCLUDED_FROM_CAPTURE) failed hr=0x%08X", hrDwm);
+    }
+    else
+    {
+        winvert4::Log("EW: Dwm EXCLUDEFROMCAPTURE applied");
+    }
 
     ShowWindow(m_hwnd, SW_SHOWNOACTIVATE);
-    // removed: SetWindowDisplayAffinity excluded; duplication captures before draw
 
     // Create swap chain and pipeline
     {
@@ -86,6 +117,12 @@ void EffectWindow::Show()
         m_d3d.As(&dxgiDevice);
         ::Microsoft::WRL::ComPtr<IDXGIAdapter> dxgiAdapter;
         dxgiDevice->GetAdapter(&dxgiAdapter);
+        if (dxgiAdapter)
+        {
+            DXGI_ADAPTER_DESC adesc{};
+            dxgiAdapter->GetDesc(&adesc);
+            winvert4::Logf("EW: device adapter LUID=%08X:%08X", adesc.AdapterLuid.HighPart, adesc.AdapterLuid.LowPart);
+        }
         dxgiAdapter->GetParent(IID_PPV_ARGS(&m_factory));
 
         DXGI_SWAP_CHAIN_DESC1 sd{};
@@ -97,30 +134,53 @@ void EffectWindow::Show()
         sd.BufferCount = 2;
         sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
 
-        m_factory->CreateSwapChainForHwnd(m_d3d.Get(), m_hwnd, &sd, nullptr, nullptr, &m_swapChain);
+        HRESULT hrSC = m_factory->CreateSwapChainForHwnd(m_d3d.Get(), m_hwnd, &sd, nullptr, nullptr, &m_swapChain);
+        if (FAILED(hrSC) || !m_swapChain)
+        {
+            winvert4::Logf("EW: CreateSwapChainForHwnd failed hr=0x%08X", hrSC);
+            return;
+        }
 
         static const char* kVS = R"(struct VSIn { float2 pos : POSITION; }; struct PSIn { float4 pos : SV_Position; float2 uv : TEXCOORD0; }; PSIn main(VSIn i){ PSIn o; o.pos=float4(i.pos,0,1); o.uv = (i.pos*float2(0.5,-0.5))+float2(0.5,0.5); return o; })";
         static const char* kPS = R"(Texture2D srcTex : register(t0); SamplerState samp0 : register(s0); cbuffer Cb : register(b0){ float2 scale; float2 offset; }; float4 main(float4 pos:SV_Position, float2 uv:TEXCOORD0) : SV_Target { float2 suv = uv*scale + offset; float4 c = srcTex.Sample(samp0, suv); c.rgb = 1.0 - c.rgb; return c; })";
         ::Microsoft::WRL::ComPtr<ID3DBlob> vsb, psb, err;
-        D3DCompile(kVS, strlen(kVS), nullptr, nullptr, nullptr, "main", "vs_4_0", 0, 0, &vsb, &err);
-        D3DCompile(kPS, strlen(kPS), nullptr, nullptr, nullptr, "main", "ps_4_0", 0, 0, &psb, &err);
-        m_d3d->CreateVertexShader(vsb->GetBufferPointer(), vsb->GetBufferSize(), nullptr, &m_vs);
-        m_d3d->CreatePixelShader(psb->GetBufferPointer(), psb->GetBufferSize(), nullptr, &m_ps);
+        HRESULT hrVS = D3DCompile(kVS, strlen(kVS), nullptr, nullptr, nullptr, "main", "vs_4_0", 0, 0, &vsb, &err);
+        if (FAILED(hrVS) || !vsb)
+        {
+            const char* emsg = err ? (const char*)err->GetBufferPointer() : "";
+            winvert4::Logf("EW: VS compile failed hr=0x%08X msg=%s", hrVS, emsg);
+            return;
+        }
+        HRESULT hrPS = D3DCompile(kPS, strlen(kPS), nullptr, nullptr, nullptr, "main", "ps_4_0", 0, 0, &psb, &err);
+        if (FAILED(hrPS) || !psb)
+        {
+            const char* emsg = err ? (const char*)err->GetBufferPointer() : "";
+            winvert4::Logf("EW: PS compile failed hr=0x%08X msg=%s", hrPS, emsg);
+            return;
+        }
+        HRESULT hrCVS = m_d3d->CreateVertexShader(vsb->GetBufferPointer(), vsb->GetBufferSize(), nullptr, &m_vs);
+        if (FAILED(hrCVS) || !m_vs) { winvert4::Logf("EW: CreateVertexShader failed hr=0x%08X", hrCVS); return; }
+        HRESULT hrCPS = m_d3d->CreatePixelShader(psb->GetBufferPointer(), psb->GetBufferSize(), nullptr, &m_ps);
+        if (FAILED(hrCPS) || !m_ps) { winvert4::Logf("EW: CreatePixelShader failed hr=0x%08X", hrCPS); return; }
 
         D3D11_INPUT_ELEMENT_DESC il[] = { {"POSITION",0,DXGI_FORMAT_R32G32_FLOAT,0,0,D3D11_INPUT_PER_VERTEX_DATA,0} };
-        m_d3d->CreateInputLayout(il, 1, vsb->GetBufferPointer(), vsb->GetBufferSize(), &m_il);
+        HRESULT hrIL = m_d3d->CreateInputLayout(il, 1, vsb->GetBufferPointer(), vsb->GetBufferSize(), &m_il);
+        if (FAILED(hrIL) || !m_il) { winvert4::Logf("EW: CreateInputLayout failed hr=0x%08X", hrIL); return; }
 
         struct V2 { float x, y; };
         V2 verts[6] = { {-1,-1},{-1,1},{1,-1},{1,-1},{-1,1},{1,1} };
         D3D11_BUFFER_DESC bd{}; bd.ByteWidth = sizeof(verts); bd.Usage = D3D11_USAGE_IMMUTABLE; bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
         D3D11_SUBRESOURCE_DATA srd{}; srd.pSysMem = verts;
-        m_d3d->CreateBuffer(&bd, &srd, &m_vb);
+        HRESULT hrVB = m_d3d->CreateBuffer(&bd, &srd, &m_vb);
+        if (FAILED(hrVB) || !m_vb) { winvert4::Logf("EW: CreateBuffer VB failed hr=0x%08X", hrVB); return; }
 
         D3D11_BUFFER_DESC cbd{}; cbd.ByteWidth = sizeof(CBData); cbd.Usage = D3D11_USAGE_DEFAULT; cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-        m_d3d->CreateBuffer(&cbd, nullptr, &m_cb);
+        HRESULT hrCB = m_d3d->CreateBuffer(&cbd, nullptr, &m_cb);
+        if (FAILED(hrCB) || !m_cb) { winvert4::Logf("EW: CreateBuffer CB failed hr=0x%08X", hrCB); return; }
 
         D3D11_SAMPLER_DESC sampd{}; sampd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR; sampd.AddressU = sampd.AddressV = sampd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
-        m_d3d->CreateSamplerState(&sampd, &m_samp);
+        HRESULT hrSamp = m_d3d->CreateSamplerState(&sampd, &m_samp);
+        if (FAILED(hrSamp) || !m_samp) { winvert4::Logf("EW: CreateSamplerState failed hr=0x%08X", hrSamp); return; }
     }
 
     Subscription sub;
@@ -130,16 +190,19 @@ void EffectWindow::Show()
 
     m_run = true;
     m_renderThread = std::thread(&EffectWindow::RenderThreadProc, this);
+    winvert4::Log("EW: render thread created");
 }
 
 void EffectWindow::Hide()
 {
+    winvert4::Log("EW: Hide begin");
     m_run = false;
     m_textureCv.notify_one(); // Wake up render thread to exit
     if (m_renderThread.joinable())
     {
         m_renderThread.join();
     }
+    winvert4::Log("EW: render thread joined");
 
     m_swapChain.Reset();
     m_ps.Reset();
@@ -156,6 +219,7 @@ void EffectWindow::Hide()
         DestroyWindow(m_hwnd);
         m_hwnd = nullptr;
     }
+    winvert4::Log("EW: Hide end");
 }
 
 void EffectWindow::OnFrameReady(Microsoft::WRL::ComPtr<ID3D11Texture2D> texture)
@@ -169,6 +233,7 @@ void EffectWindow::OnFrameReady(Microsoft::WRL::ComPtr<ID3D11Texture2D> texture)
 
 void EffectWindow::RenderThreadProc()
 {
+    winvert4::Log("EW: RenderThread start");
     using namespace std::chrono_literals;
     while (m_run)
     {
@@ -207,9 +272,19 @@ void EffectWindow::RenderThreadProc()
         if (m_thread) { std::lock_guard<std::mutex> lock(m_thread->GetContextMutex()); m_ctx->UpdateSubresource(m_cb.Get(), 0, nullptr, &cb, 0, 0); }
 
         ::Microsoft::WRL::ComPtr<ID3D11Texture2D> back;
-        m_swapChain->GetBuffer(0, IID_PPV_ARGS(&back));
+        HRESULT hrGB = m_swapChain->GetBuffer(0, IID_PPV_ARGS(&back));
+        if (FAILED(hrGB) || !back)
+        {
+            winvert4::Logf("EW: GetBuffer(0) failed hr=0x%08X", hrGB);
+            continue;
+        }
         ::Microsoft::WRL::ComPtr<ID3D11RenderTargetView> rtv;
-        m_d3d->CreateRenderTargetView(back.Get(), nullptr, &rtv);
+        HRESULT hrRTV = m_d3d->CreateRenderTargetView(back.Get(), nullptr, &rtv);
+        if (FAILED(hrRTV) || !rtv)
+        {
+            winvert4::Logf("EW: CreateRenderTargetView failed hr=0x%08X", hrRTV);
+            continue;
+        }
 
         UINT stride = sizeof(float) * 2, offset = 0;
         ID3D11Buffer* vb = m_vb.Get();
@@ -243,7 +318,9 @@ void EffectWindow::RenderThreadProc()
             m_ctx->ClearRenderTargetView(rtv.Get(), clear);
             m_ctx->Draw(6, 0);
         }
-        m_swapChain->Present(0, 0);
+        HRESULT hrPr = m_swapChain->Present(0, 0);
+        if (FAILED(hrPr)) { winvert4::Logf("EW: Present failed hr=0x%08X", hrPr); }
     }
+    winvert4::Log("EW: RenderThread exit");
 }
 

@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "MainWindow.xaml.h"
+#include "Log.h"
 #if __has_include("MainWindow.g.cpp")
 #include "MainWindow.g.cpp"
 #endif
@@ -23,6 +24,7 @@ namespace winrt::Winvert4::implementation
 
     void MainWindow::ToggleSnipping()
     {
+        winvert4::Log("MainWindow: ToggleSnipping");
         StartScreenSelection();
     }
 
@@ -30,6 +32,7 @@ namespace winrt::Winvert4::implementation
     {
         if (m_isSelecting) return;
         m_isSelecting = true;
+        winvert4::Log("MainWindow: StartScreenSelection");
 
         CaptureScreenBitmap();
 
@@ -43,6 +46,7 @@ namespace winrt::Winvert4::implementation
 
         static ATOM s_atom = 0;
         if (!s_atom) s_atom = RegisterClassExW(&wcex);
+        winvert4::Logf("MainWindow: selection wnd class atom=%u", (unsigned)s_atom);
 
         const int vx = GetSystemMetrics(SM_XVIRTUALSCREEN);
         const int vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
@@ -60,6 +64,7 @@ namespace winrt::Winvert4::implementation
 
         if (m_selectionHwnd)
         {
+            winvert4::Logf("MainWindow: selection HWND=%p rect=(%d,%d %dx%d)", (void*)m_selectionHwnd, vx, vy, vw, vh);
             SetLayeredWindowAttributes(m_selectionHwnd, 0, 160, LWA_ALPHA);
             ShowWindow(m_selectionHwnd, SW_SHOW);
             SetForegroundWindow(m_selectionHwnd);
@@ -67,6 +72,7 @@ namespace winrt::Winvert4::implementation
         }
         else
         {
+            winvert4::Log("MainWindow: selection CreateWindowExW failed");
             ReleaseScreenBitmap();
             m_isSelecting = false;
         }
@@ -80,6 +86,7 @@ namespace winrt::Winvert4::implementation
         m_virtualOrigin.y = GetSystemMetrics(SM_YVIRTUALSCREEN);
         m_screenSize.cx   = GetSystemMetrics(SM_CXVIRTUALSCREEN);
         m_screenSize.cy   = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+        winvert4::Logf("MainWindow: virtual origin=(%ld,%ld) size=(%ldx%ld)", m_virtualOrigin.x, m_virtualOrigin.y, m_screenSize.cx, m_screenSize.cy);
 
         HDC screenDC = GetDC(nullptr);
         m_screenMemDC = CreateCompatibleDC(screenDC);
@@ -91,6 +98,7 @@ namespace winrt::Winvert4::implementation
 
         SelectObject(m_screenMemDC, old);
         ReleaseDC(nullptr, screenDC);
+        winvert4::Log("MainWindow: captured screen bitmap");
     }
 
     void MainWindow::ReleaseScreenBitmap()
@@ -107,6 +115,7 @@ namespace winrt::Winvert4::implementation
         }
         m_screenSize = { 0,0 };
         m_virtualOrigin = { 0,0 };
+        winvert4::Log("MainWindow: released screen bitmap");
     }
 
     RECT MainWindow::MakeRectFromPoints(POINT a, POINT b) const
@@ -121,6 +130,7 @@ namespace winrt::Winvert4::implementation
 
     void MainWindow::OnSelectionCompleted(RECT sel)
     {
+        winvert4::Logf("MainWindow: selection completed rect=(%ld,%ld,%ld,%ld)", sel.left, sel.top, sel.right, sel.bottom);
         auto newWindow = std::make_unique<EffectWindow>(sel);
         newWindow->Show();
         m_effectWindows.push_back(std::move(newWindow));
@@ -155,6 +165,7 @@ namespace winrt::Winvert4::implementation
 
             SetCapture(hwnd);
             InvalidateRect(hwnd, nullptr, TRUE);
+            winvert4::Log("MainWindow: selection WM_LBUTTONDOWN");
             return 0;
         }
 
@@ -164,6 +175,7 @@ namespace winrt::Winvert4::implementation
             POINTS pts = MAKEPOINTS(lParam);
             self->m_ptEnd = { pts.x, pts.y };
             InvalidateRect(hwnd, nullptr, TRUE);
+            // optional: high-frequency, avoid spamming
             return 0;
         }
 
@@ -186,6 +198,7 @@ namespace winrt::Winvert4::implementation
             self->OnSelectionCompleted(sel);
 
             DestroyWindow(hwnd);
+            winvert4::Log("MainWindow: selection WM_LBUTTONUP -> DestroyWindow");
             return 0;
         }
 
@@ -194,6 +207,7 @@ namespace winrt::Winvert4::implementation
             {
                 if (self) { self->m_isDragging = false; self->m_isSelecting = false; }
                 DestroyWindow(hwnd);
+                winvert4::Log("MainWindow: selection cancelled via ESC");
                 return 0;
             }
             break;
@@ -238,6 +252,7 @@ namespace winrt::Winvert4::implementation
                 self->m_isSelecting = false;
                 self->ReleaseScreenBitmap();
                 self->m_selectionHwnd = nullptr;
+                winvert4::Log("MainWindow: selection overlay destroyed");
             }
             return 0;
         }
