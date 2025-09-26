@@ -12,8 +12,10 @@ public:
     void Stop();
 
     void AddSubscription(const Subscription& sub);
+    void RemoveSubscriber(ISubscriber* sub);
     const RECT& GetOutputRect() const { return m_outputRect; }
     ID3D11Device* GetDevice() { return m_device.Get(); }
+    std::mutex& GetContextMutex() { return m_immediateCtxMutex; }
 
 
 private:
@@ -23,10 +25,15 @@ private:
     std::atomic<bool> m_isRunning = false;
 
     RECT m_outputRect{};
-    Microsoft::WRL::ComPtr<ID3D11Device> m_device;
-    Microsoft::WRL::ComPtr<ID3D11DeviceContext> m_context;
-    Microsoft::WRL::ComPtr<IDXGIOutput1> m_output;
-    Microsoft::WRL::ComPtr<IDXGIOutputDuplication> m_duplication;
+    ::Microsoft::WRL::ComPtr<ID3D11Device> m_device;
+    ::Microsoft::WRL::ComPtr<ID3D11DeviceContext> m_context;
+    ::Microsoft::WRL::ComPtr<IDXGIOutput1> m_output;
+    ::Microsoft::WRL::ComPtr<IDXGIOutputDuplication> m_duplication;
 
     std::vector<Subscription> m_subscriptions;
+    std::mutex m_subMutex;
+    std::mutex m_immediateCtxMutex;
+    // Shared full-frame texture for this output (sampled by all subscribers)
+    ::Microsoft::WRL::ComPtr<ID3D11Texture2D> m_fullTexture;
 };
+

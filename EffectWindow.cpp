@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "Log.h"
 #include "EffectWindow.h"
 #include "App.xaml.h"
 
@@ -14,20 +15,42 @@ EffectWindow::~EffectWindow()
 
 void EffectWindow::Show()
 {
-    OutputDebugStringA("EffectWindow::Show called\n");
-
-    auto outputManager = winrt::Winvert4::implementation::App::Current()->GetOutputManager();
-    auto thread = outputManager->GetThreadForRect(m_desktopRect);
-    if (!thread)
+    winvert4::Log("EffectWindow::Show called");
     {
-        OutputDebugStringA("EffectWindow::Show failed to get a DuplicationThread\n");
+        char dbg[256];
+        sprintf_s(dbg, "EW.Show rect=(%ld,%ld,%ld,%ld)", m_desktopRect.left, m_desktopRect.top, m_desktopRect.right, m_desktopRect.bottom);
+        winvert4::Log(dbg);
+    }
+
+    auto app = winrt::Winvert4::implementation::App::Current();
+    winvert4::Log(app ? "EW.Show got App::Current" : "EW.Show App::Current is null");
+    if (!app)
+    {
+        winvert4::Log("EffectWindow::Show no App::Current() instance");
+        return;
+    }
+    auto outputManager = app->GetOutputManager();
+    winvert4::Log(outputManager ? "EW.Show got OutputManager" : "EW.Show GetOutputManager returned null");
+    if (!outputManager)
+    {
+        winvert4::Log("EffectWindow::Show no OutputManager available");
+        return;
+    }
+    winvert4::Log("EW.Show calling GetThreadForRect");
+    m_thread = outputManager->GetThreadForRect(m_desktopRect);
+    {
+        char dbg[64]; sprintf_s(dbg, "EW.Show thread=%p", (void*)m_thread); winvert4::Log(dbg);
+    }
+    if (!m_thread)
+    {
+        winvert4::Log("EffectWindow::Show failed to get a DuplicationThread\n");
         return;
     }
 
-    m_d3d = thread->GetDevice();
+    m_d3d = m_thread->GetDevice();
     if (!m_d3d)
     {
-        OutputDebugStringA("EffectWindow::Show failed to get a device from the thread\n");
+        winvert4::Log("EffectWindow::Show failed to get a device from the thread\n");
         return;
     }
     m_d3d->GetImmediateContext(&m_ctx);
@@ -52,10 +75,10 @@ void EffectWindow::Show()
         kEffectWndClass, L"", WS_POPUP,
         m_desktopRect.left, m_desktopRect.top, m_desktopRect.right - m_desktopRect.left, m_desktopRect.bottom - m_desktopRect.top,
         nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
-    if (!m_hwnd) { OutputDebugStringA("EffectWindow::Show failed to create HWND\n"); return; }
+    if (!m_hwnd) { winvert4::Log("EffectWindow::Show failed to create HWND\n"); return; }
 
     ShowWindow(m_hwnd, SW_SHOWNOACTIVATE);
-    SetWindowDisplayAffinity(m_hwnd, WDA_EXCLUDEFROMCAPTURE);
+    // removed: SetWindowDisplayAffinity excluded; duplication captures before draw
 
     // Create swap chain and pipeline
     {
@@ -103,7 +126,7 @@ void EffectWindow::Show()
     Subscription sub;
     sub.Subscriber = this;
     sub.Region = m_desktopRect;
-    thread->AddSubscription(sub);
+    m_thread->AddSubscription(sub);
 
     m_run = true;
     m_renderThread = std::thread(&EffectWindow::RenderThreadProc, this);
@@ -146,24 +169,42 @@ void EffectWindow::OnFrameReady(Microsoft::WRL::ComPtr<ID3D11Texture2D> texture)
 
 void EffectWindow::RenderThreadProc()
 {
+    using namespace std::chrono_literals;
     while (m_run)
     {
         Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
         {
             std::unique_lock<std::mutex> lock(m_textureMutex);
-            m_textureCv.wait(lock, [this] { return !m_run || m_sharedTexture != nullptr; });
+            m_textureCv.wait_for(lock, 16ms, [this] { return !m_run || m_sharedTexture != nullptr; });
             if (!m_run) break;
-            texture = m_sharedTexture;
-            m_sharedTexture.Reset();
+            if (m_sharedTexture)
+            {
+                m_lastTexture = m_sharedTexture;
+                m_sharedTexture.Reset();
+            }
+            texture = m_lastTexture;
         }
 
         if (!texture) continue;
 
         ::Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> srv;
-        m_d3d->CreateShaderResourceView(texture.Get(), nullptr, &srv);
+        HRESULT hrSrv = m_d3d->CreateShaderResourceView(texture.Get(), nullptr, &srv);
+        if (FAILED(hrSrv) || !srv)
+        {
+            winvert4::Log("EffectWindow: CreateShaderResourceView failed or null SRV\n");
+            continue;
+        }
 
-        CBData cb{ {1.0f, 1.0f}, {0.0f, 0.0f} };
-        m_ctx->UpdateSubresource(m_cb.Get(), 0, nullptr, &cb, 0, 0);
+        // Compute scale/offset from output rect to this window''s rect
+        RECT out = m_thread ? m_thread->GetOutputRect() : RECT{0,0,1,1};
+        float monW = float(out.right - out.left);
+        float monH = float(out.bottom - out.top);
+        float scaleX = monW > 0 ? float(m_desktopRect.right - m_desktopRect.left) / monW : 1.0f;
+        float scaleY = monH > 0 ? float(m_desktopRect.bottom - m_desktopRect.top) / monH : 1.0f;
+        float offsetX = monW > 0 ? float(m_desktopRect.left - out.left) / monW : 0.0f;
+        float offsetY = monH > 0 ? float(m_desktopRect.top - out.top) / monH : 0.0f;
+        CBData cb{ {scaleX, scaleY}, {offsetX, offsetY} };
+        if (m_thread) { std::lock_guard<std::mutex> lock(m_thread->GetContextMutex()); m_ctx->UpdateSubresource(m_cb.Get(), 0, nullptr, &cb, 0, 0); }
 
         ::Microsoft::WRL::ComPtr<ID3D11Texture2D> back;
         m_swapChain->GetBuffer(0, IID_PPV_ARGS(&back));
@@ -172,27 +213,37 @@ void EffectWindow::RenderThreadProc()
 
         UINT stride = sizeof(float) * 2, offset = 0;
         ID3D11Buffer* vb = m_vb.Get();
-        m_ctx->IASetVertexBuffers(0, 1, &vb, &stride, &offset);
-        m_ctx->IASetInputLayout(m_il.Get());
-        m_ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        m_ctx->VSSetShader(m_vs.Get(), nullptr, 0);
+        if (m_thread) {
+            std::lock_guard<std::mutex> lock(m_thread->GetContextMutex());
+            m_ctx->IASetVertexBuffers(0, 1, &vb, &stride, &offset);
+            m_ctx->IASetInputLayout(m_il.Get());
+            m_ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            m_ctx->VSSetShader(m_vs.Get(), nullptr, 0);
+        }
         ID3D11Buffer* cbp = m_cb.Get();
-        m_ctx->VSSetConstantBuffers(0, 1, &cbp);
-        m_ctx->PSSetConstantBuffers(0, 1, &cbp);
-        m_ctx->PSSetShader(m_ps.Get(), nullptr, 0);
-        ID3D11ShaderResourceView* srvp = srv.Get();
-        m_ctx->PSSetShaderResources(0, 1, &srvp);
-        ID3D11SamplerState* smp = m_samp.Get();
-        m_ctx->PSSetSamplers(0, 1, &smp);
-        ID3D11RenderTargetView* r = rtv.Get();
-        m_ctx->OMSetRenderTargets(1, &r, nullptr);
+        if (m_thread) {
+            std::lock_guard<std::mutex> lock(m_thread->GetContextMutex());
+            m_ctx->VSSetConstantBuffers(0, 1, &cbp);
+            m_ctx->PSSetConstantBuffers(0, 1, &cbp);
+            m_ctx->PSSetShader(m_ps.Get(), nullptr, 0);
+            ID3D11ShaderResourceView* srvp = srv.Get();
+            m_ctx->PSSetShaderResources(0, 1, &srvp);
+            ID3D11SamplerState* smp = m_samp.Get();
+            m_ctx->PSSetSamplers(0, 1, &smp);
+            ID3D11RenderTargetView* r = rtv.Get();
+            m_ctx->OMSetRenderTargets(1, &r, nullptr);
+        }
 
         D3D11_VIEWPORT vp{ 0,0,(float)(m_desktopRect.right - m_desktopRect.left),(float)(m_desktopRect.bottom - m_desktopRect.top),0,1 };
-        m_ctx->RSSetViewports(1, &vp);
+        if (m_thread) { std::lock_guard<std::mutex> lock(m_thread->GetContextMutex()); m_ctx->RSSetViewports(1, &vp); }
 
         float clear[4] = { 0,0,0,0 };
-        m_ctx->ClearRenderTargetView(rtv.Get(), clear);
-        m_ctx->Draw(6, 0);
-        m_swapChain->Present(1, 0);
+        if (m_thread) {
+            std::lock_guard<std::mutex> lock(m_thread->GetContextMutex());
+            m_ctx->ClearRenderTargetView(rtv.Get(), clear);
+            m_ctx->Draw(6, 0);
+        }
+        m_swapChain->Present(0, 0);
     }
 }
+

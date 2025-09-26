@@ -57,6 +57,7 @@
 #include <map>
 #include <string>
 #include <debugapi.h>
+#include <mutex>
 
 
 // Some SDKs may not yet expose this newer DWM attribute
