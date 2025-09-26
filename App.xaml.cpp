@@ -15,11 +15,16 @@ namespace
 }
 
 ATOM winrt::Winvert4::implementation::App::s_hotkeyAtom = 0;
+winrt::Winvert4::implementation::App* winrt::Winvert4::implementation::App::s_current = nullptr;
 
 namespace winrt::Winvert4::implementation
 {
     App::App()
     {
+        s_current = this;
+        m_outputManager = std::make_unique<OutputManager>();
+        m_outputManager->Initialize();
+
         InitializeComponent();
     }
 
@@ -31,6 +36,16 @@ namespace winrt::Winvert4::implementation
             DestroyWindow(m_hotkeyHwnd);
             m_hotkeyHwnd = nullptr;
         }
+    }
+
+    App* App::Current()
+    {
+        return s_current;
+    }
+
+    OutputManager* App::GetOutputManager()
+    {
+        return m_outputManager.get();
     }
 
     void App::OnLaunched(winrt::Microsoft::UI::Xaml::LaunchActivatedEventArgs const&)

@@ -1,5 +1,6 @@
 #pragma once
 #include "App.xaml.g.h"
+#include "OutputManager.h"
 
 namespace winrt::Winvert4::implementation
 {
@@ -10,13 +11,16 @@ namespace winrt::Winvert4::implementation
 
         void OnLaunched(winrt::Microsoft::UI::Xaml::LaunchActivatedEventArgs const&);
 
-    private:
-        // The app's main window
-        winrt::Microsoft::UI::Xaml::Window m_window{ nullptr };
+        static App* Current();
+        OutputManager* GetOutputManager();
 
-        // Hidden message-only window to receive WM_HOTKEY
+    private:
+        winrt::Microsoft::UI::Xaml::Window m_window{ nullptr };
         HWND m_hotkeyHwnd{ nullptr };
         static ATOM s_hotkeyAtom;
+
+        static App* s_current;
+        std::unique_ptr<OutputManager> m_outputManager;
 
         static LRESULT CALLBACK HotkeyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 

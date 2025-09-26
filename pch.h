@@ -52,6 +52,12 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <vector>
+#include <memory>
+#include <map>
+#include <string>
+#include <debugapi.h>
+
 
 // Some SDKs may not yet expose this newer DWM attribute
 #ifndef DWMWA_EXCLUDED_FROM_CAPTURE
