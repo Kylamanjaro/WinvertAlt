@@ -47,8 +47,12 @@
 #include <d3dcompiler.h>
 #include <wrl/client.h>
 #include <dwmapi.h>
+#include <d2d1_1.h>
+#include <dwrite.h>
 #pragma comment(lib, "D3DCompiler.lib")
 #pragma comment(lib, "Dwmapi.lib")
+#pragma comment(lib, "d2d1.lib")
+#pragma comment(lib, "dwrite.lib")
 
 #include <algorithm>
 #include <cmath>

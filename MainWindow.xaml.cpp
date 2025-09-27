@@ -300,13 +300,18 @@ namespace winrt::Winvert4::implementation
 
     void MainWindow::ShowFpsToggle_Toggled(IInspectable const&, RoutedEventArgs const&)
     {
-        // Sync setting and push to worker
+        // Sync setting and push to existing windows
         m_showFpsOverlay = ShowFpsToggle().IsOn();
-        if (!m_isAppInitialized)
+        for (auto& wnd : m_effectWindows)
         {
-            return;
+            if (!wnd) continue;
+            int idx = &wnd - &m_effectWindows[0];
+            if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
+            {
+                m_windowSettings[idx].showFpsOverlay = m_showFpsOverlay;
+                wnd->UpdateSettings(m_windowSettings[idx]);
+            }
         }
-        //SendSettingsToWorker();
     }
 
     void MainWindow::RebindInvertHotkeyButton_Click(IInspectable const&, RoutedEventArgs const&)
@@ -519,6 +524,7 @@ namespace winrt::Winvert4::implementation
         {
             settings.isGrayscaleEffectEnabled = true;
         }
+        settings.showFpsOverlay = m_showFpsOverlay;
         m_windowSettings.push_back(settings);
         m_pendingEffect = PendingEffect::None; // Reset for next time
 

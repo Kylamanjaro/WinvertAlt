@@ -73,4 +73,19 @@ private:
 
     // Owning manager (not owned)
     OutputManager* m_outputManager{ nullptr };
+
+    // D2D/DirectWrite for overlays
+    ::Microsoft::WRL::ComPtr<ID2D1Factory1>      m_d2dFactory;
+    ::Microsoft::WRL::ComPtr<IDWriteFactory>     m_dwriteFactory;
+    ::Microsoft::WRL::ComPtr<IDWriteTextFormat>  m_textFormat;
+    ::Microsoft::WRL::ComPtr<ID2D1Device>        m_d2dDevice;
+    ::Microsoft::WRL::ComPtr<ID2D1DeviceContext> m_d2dCtx;
+    ::Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_textBrush;
+
+    // FPS tracking
+    LARGE_INTEGER m_qpcFreq{};
+    LARGE_INTEGER m_lastQpc{};
+    float  m_fps{ 0.0f };
+    double m_fpsAccum{ 0.0 };
+    int    m_fpsFrames{ 0 };
 };

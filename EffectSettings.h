@@ -15,4 +15,7 @@ struct EffectSettings
     // Custom Matrix Filter
     bool isCustomEffectActive = false;
     // MAGCOLOREFFECT customEffectMatrix; // Placeholder for a 5x5 matrix
+
+    // Diagnostics
+    bool showFpsOverlay = false;
 };

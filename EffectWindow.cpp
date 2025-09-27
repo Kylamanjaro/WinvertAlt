@@ -238,6 +238,47 @@ void EffectWindow::CreateAndShow()
         return;
     }
 
+    // Initialize D2D/DirectWrite for FPS overlay
+    if (!m_d2dFactory)
+    {
+        D2D1_FACTORY_OPTIONS opts{};
+        D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory1), &opts, reinterpret_cast<void**>(m_d2dFactory.ReleaseAndGetAddressOf()));
+    }
+    if (!m_dwriteFactory)
+    {
+        DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(m_dwriteFactory.ReleaseAndGetAddressOf()));
+    }
+    if (!m_d2dDevice)
+    {
+        m_d2dFactory->CreateDevice(dxgiDevice.Get(), &m_d2dDevice);
+    }
+    if (!m_d2dCtx)
+    {
+        m_d2dDevice->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &m_d2dCtx);
+        if (m_d2dCtx)
+        {
+            m_d2dCtx->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+            if (!m_textBrush)
+            {
+                m_d2dCtx->CreateSolidColorBrush(D2D1::ColorF(1.f, 1.f, 1.f, 0.85f), &m_textBrush);
+            }
+        }
+    }
+    if (!m_textFormat && m_dwriteFactory)
+    {
+        m_dwriteFactory->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD,
+            DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 14.0f, L"en-us", &m_textFormat);
+        if (m_textFormat)
+        {
+            m_textFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_TRAILING);
+            m_textFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
+        }
+    }
+
+    // Init FPS timer
+    QueryPerformanceFrequency(&m_qpcFreq);
+    QueryPerformanceCounter(&m_lastQpc);
+
     // Shaders
     ComPtr<ID3DBlob> vsb, psb, err;
     HRESULT hrVS = D3DCompile(kVS, (UINT)strlen(kVS), nullptr, nullptr, nullptr, "main", "vs_4_0", 0, 0, &vsb, &err);
@@ -362,6 +403,49 @@ void EffectWindow::Render(ID3D11Texture2D* frame)
     if (SUCCEEDED(m_deferredCtx->FinishCommandList(FALSE, &commandList))) {
         // No lock needed, as this is called from the DuplicationThread's loop
         m_immediateCtx->ExecuteCommandList(commandList.Get(), FALSE);
+    }
+
+    // FPS calculation
+    LARGE_INTEGER now{}; QueryPerformanceCounter(&now);
+    const double dt = double(now.QuadPart - m_lastQpc.QuadPart) / double(m_qpcFreq.QuadPart);
+    m_lastQpc = now;
+    m_fpsAccum += dt; m_fpsFrames += 1;
+    if (m_fpsAccum >= 0.5) { m_fps = static_cast<float>(m_fpsFrames / m_fpsAccum); m_fpsAccum = 0.0; m_fpsFrames = 0; }
+
+    // Optional FPS overlay (top-right)
+    if (m_settings.showFpsOverlay && m_d2dCtx && m_textFormat && m_textBrush)
+    {
+        // Obtain current back buffer as DXGI surface and set as D2D target
+        ComPtr<ID3D11Texture2D> backBuf;
+        if (SUCCEEDED(m_swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuf))) && backBuf)
+        {
+            ComPtr<IDXGISurface> surf;
+            if (SUCCEEDED(backBuf.As(&surf)))
+            {
+                D2D1_BITMAP_PROPERTIES1 bp = D2D1::BitmapProperties1(
+                    D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+                    D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
+                ::Microsoft::WRL::ComPtr<ID2D1Bitmap1> targetBmp;
+                if (SUCCEEDED(m_d2dCtx->CreateBitmapFromDxgiSurface(surf.Get(), &bp, &targetBmp)))
+                {
+                    m_d2dCtx->SetTarget(targetBmp.Get());
+                    m_d2dCtx->BeginDraw();
+
+                    const float w = static_cast<float>(m_desktopRect.right - m_desktopRect.left);
+                    D2D1_RECT_F rect = D2D1::RectF(w - 110.f, 4.f, w - 6.f, 28.f);
+
+                    wchar_t buf[32];
+                    swprintf_s(buf, L"%3.0f FPS", m_fps);
+                    m_d2dCtx->DrawTextW(buf, (UINT32)wcslen(buf), m_textFormat.Get(), rect, m_textBrush.Get());
+
+                    // Optional: subtle background for readability
+                    // Could draw with another brush under text if desired
+
+                    HRESULT hr = m_d2dCtx->EndDraw();
+                    (void)hr;
+                }
+            }
+        }
     }
 
     m_swapChain->Present(1, 0);
