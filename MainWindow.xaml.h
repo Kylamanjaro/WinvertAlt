@@ -65,20 +65,25 @@ namespace winrt::Winvert4::implementation
 
     private:
         static LRESULT CALLBACK SelectionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+        static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData);
         static LRESULT CALLBACK WindowSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
+
+        static std::vector<RECT> s_monitorRects;
 
         bool   m_isSelecting{ false };
         bool   m_isDragging{ false };
         HWND   m_selectionHwnd{ nullptr };
-        POINT  m_ptStart{ 0, 0 };
-        POINT  m_ptEnd{ 0, 0 };
+        POINT  m_ptStart{ 0, 0 }; // In client coords of selection window
+        POINT  m_ptEnd{ 0, 0 };   // In client coords of selection window
 
+        ULONG_PTR m_gdiplusToken;
         HBITMAP m_screenBmp{ nullptr };
         HDC     m_screenMemDC{ nullptr };
         SIZE    m_screenSize{ 0, 0 };
         POINT   m_virtualOrigin{ 0, 0 };
 
         void CaptureScreenBitmap();
+        void EnumerateMonitors();
         void ReleaseScreenBitmap();
         RECT MakeRectFromPoints(POINT a, POINT b) const;
         void OnSelectionCompleted(RECT sel);
@@ -95,6 +100,7 @@ namespace winrt::Winvert4::implementation
         bool m_lastRemovalViaUI{ false };
         bool m_lastRemovalInitiatedByHotkey{ false };
         bool m_keepFiltersFlyoutOpenNext{ false };
+        bool m_showSelectionInstructions{ true }; // From reference
 
         // --- Settings ---
         int m_brightnessThreshold{ 220 };

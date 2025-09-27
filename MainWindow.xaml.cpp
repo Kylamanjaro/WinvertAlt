@@ -3,6 +3,7 @@
 #include "Log.h"
 #include "OutputManager.h"
 #include <winrt/Microsoft.UI.Windowing.h>
+#include <gdiplus.h>
 #include <microsoft.ui.xaml.window.h>
 
 #if __has_include("MainWindow.g.cpp")
@@ -24,11 +25,17 @@ namespace
     constexpr int HOTKEY_REMOVE_ID = 3;
 }
 
+std::vector<RECT> winrt::Winvert4::implementation::MainWindow::s_monitorRects;
+
 namespace winrt::Winvert4::implementation
 {
     MainWindow::MainWindow()
     {
         winvert4::Log("MainWindow: ctor start");
+
+        Gdiplus::GdiplusStartupInput gdiplusStartupInput;
+        Gdiplus::GdiplusStartup(&m_gdiplusToken, &gdiplusStartupInput, NULL);
+
         InitializeComponent();
         this->Title(L"Winvert Control Panel");
 
@@ -41,6 +48,7 @@ namespace winrt::Winvert4::implementation
         winvert4::Logf("MainWindow: OutputManager initialized hr=0x%08X", hrOM);
 
         // TODO: Load settings from a file
+        EnumerateMonitors();
 
         m_brightnessOnIconSource = SvgImageSource(Uri(L"ms-appx:///Assets/glasses_on.svg"));
         m_brightnessOffIconSource = SvgImageSource(Uri(L"ms-appx:///Assets/glasses_off.svg"));
@@ -72,6 +80,7 @@ namespace winrt::Winvert4::implementation
     {
         // TODO: Save settings
         RemoveWindowSubclass(m_mainHwnd, &MainWindow::WindowSubclassProc, 1);
+        Gdiplus::GdiplusShutdown(m_gdiplusToken);
     }
 
     int32_t MainWindow::MyProperty() { return 0; }
@@ -100,7 +109,11 @@ namespace winrt::Winvert4::implementation
         auto& s = m_windowSettings[idx];
         s.isInvertEffectEnabled = !s.isInvertEffectEnabled;
         UpdateUIState();
-        //SendSelectedWindowSettings();
+        if (idx < static_cast<int>(m_effectWindows.size()))
+        {
+            if (auto& wnd = m_effectWindows[idx])
+                wnd->UpdateSettings(s);
+        }
     }
 
     void MainWindow::GrayscaleEffect_Click(IInspectable const&, RoutedEventArgs const&)
@@ -110,7 +123,11 @@ namespace winrt::Winvert4::implementation
         auto& s = m_windowSettings[idx];
         s.isGrayscaleEffectEnabled = !s.isGrayscaleEffectEnabled;
         UpdateUIState();
-        //SendSelectedWindowSettings();
+        if (idx < static_cast<int>(m_effectWindows.size()))
+        {
+            if (auto& wnd = m_effectWindows[idx])
+                wnd->UpdateSettings(s);
+        }
     }
 
     void MainWindow::AddWindow_Click(IInspectable const&, RoutedEventArgs const&)
@@ -358,8 +375,6 @@ namespace winrt::Winvert4::implementation
         m_isSelecting = true;
         winvert4::Log("MainWindow: StartScreenSelection");
 
-        CaptureScreenBitmap();
-
         WNDCLASSEXW wcex{ sizeof(WNDCLASSEXW) };
         wcex.style         = CS_HREDRAW | CS_VREDRAW;
         wcex.lpfnWndProc   = &MainWindow::SelectionWndProc;
@@ -377,8 +392,12 @@ namespace winrt::Winvert4::implementation
         const int vw = GetSystemMetrics(SM_CXVIRTUALSCREEN);
         const int vh = GetSystemMetrics(SM_CYVIRTUALSCREEN);
 
+        // Note: Do not use WS_EX_LAYERED here because we draw the dimming/freeze
+        // effect directly into the window via GDI+. Layered windows typically
+        // require UpdateLayeredWindow/SetLayeredWindowAttributes to present
+        // content; removing it ensures our WM_PAINT drawing is visible.
         m_selectionHwnd = CreateWindowExW(
-            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
+            WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
             kSelectionWndClass,
             L"Winvert Selection",
             WS_POPUP,
@@ -389,15 +408,15 @@ namespace winrt::Winvert4::implementation
         if (m_selectionHwnd)
         {
             winvert4::Logf("MainWindow: selection HWND=%p rect=(%d,%d %dx%d)", (void*)m_selectionHwnd, vx, vy, vw, vh);
-            SetLayeredWindowAttributes(m_selectionHwnd, 0, 160, LWA_ALPHA);
             ShowWindow(m_selectionHwnd, SW_SHOW);
             SetForegroundWindow(m_selectionHwnd);
-            SetCapture(m_selectionHwnd);
+            // Capture the screen AFTER the window is visible.
+            CaptureScreenBitmap();
+            InvalidateRect(m_selectionHwnd, nullptr, FALSE); // Trigger a repaint with the new bitmap.
         }
         else
         {
             winvert4::Log("MainWindow: selection CreateWindowExW failed");
-            ReleaseScreenBitmap();
             m_isSelecting = false;
         }
     }
@@ -423,6 +442,18 @@ namespace winrt::Winvert4::implementation
         SelectObject(m_screenMemDC, old);
         ReleaseDC(nullptr, screenDC);
         winvert4::Log("MainWindow: captured screen bitmap");
+    }
+
+    void MainWindow::EnumerateMonitors()
+    {
+        s_monitorRects.clear();
+        EnumDisplayMonitors(NULL, NULL, MonitorEnumProc, 0);
+    }
+
+    BOOL CALLBACK MainWindow::MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData)
+    {
+        s_monitorRects.push_back(*lprcMonitor);
+        return TRUE;
     }
 
     void MainWindow::ReleaseScreenBitmap()
@@ -469,9 +500,30 @@ namespace winrt::Winvert4::implementation
         winvert4::Logf("MainWindow: selection completed rect=(%ld,%ld,%ld,%ld)",
                        sel.left, sel.top, sel.right, sel.bottom);
 
+        // 3) Create a settings object for the new window
+        EffectSettings settings{};
+        if (m_pendingEffect == PendingEffect::Invert)
+        {
+            settings.isInvertEffectEnabled = true;
+        }
+        else if (m_pendingEffect == PendingEffect::Grayscale)
+        {
+            settings.isGrayscaleEffectEnabled = true;
+        }
+        m_windowSettings.push_back(settings);
+        m_pendingEffect = PendingEffect::None; // Reset for next time
+
         // 3) Create and show the effect window AFTER overlay is gone
         auto newWindow = std::make_unique<EffectWindow>(sel, m_outputManager.get());
+        newWindow->UpdateSettings(settings);
         newWindow->Show();
+
+        // 4) Add a tab for the new window
+        auto newTab = TabViewItem();
+        newTab.Header(winrt::box_value(L"Region " + std::to_wstring(m_effectWindows.size() + 1)));
+        RegionsTabView().TabItems().Append(newTab);
+        RegionsTabView().SelectedItem(newTab);
+
         m_effectWindows.push_back(std::move(newWindow));
     }
 
@@ -482,6 +534,9 @@ namespace winrt::Winvert4::implementation
 
         switch (msg)
         {
+        case WM_ERASEBKGND:
+            // Prevent background erase to avoid flicker; we fully paint in WM_PAINT
+            return 1;
         case WM_NCCREATE:
         {
             auto cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
@@ -491,8 +546,10 @@ namespace winrt::Winvert4::implementation
         }
 
         case WM_SETCURSOR:
+        {
             SetCursor(LoadCursorW(nullptr, IDC_CROSS));
             return TRUE;
+        }
 
         case WM_LBUTTONDOWN:
         {
@@ -500,11 +557,13 @@ namespace winrt::Winvert4::implementation
             self->m_isDragging = true;
 
             POINTS pts = MAKEPOINTS(lParam);
-            self->m_ptStart = { pts.x, pts.y };
-            self->m_ptEnd   = self->m_ptStart;
+            // Use client coordinates, which are relative to the virtual screen origin
+            self->m_ptStart = { pts.x, pts.y }; // These are client coords
+            self->m_ptEnd = self->m_ptStart;
 
             SetCapture(hwnd);
-            InvalidateRect(hwnd, nullptr, TRUE);
+            // Use FALSE to avoid erasing the background, which we handle ourselves
+            InvalidateRect(hwnd, nullptr, FALSE);
             winvert4::Log("MainWindow: selection WM_LBUTTONDOWN");
             return 0;
         }
@@ -513,8 +572,8 @@ namespace winrt::Winvert4::implementation
         {
             if (!self || !self->m_isDragging) break;
             POINTS pts = MAKEPOINTS(lParam);
-            self->m_ptEnd = { pts.x, pts.y };
-            InvalidateRect(hwnd, nullptr, TRUE);
+            self->m_ptEnd = { pts.x, pts.y }; // Client coords
+            InvalidateRect(hwnd, nullptr, FALSE); // Use FALSE to avoid flicker
             return 0;
         }
 
@@ -525,7 +584,7 @@ namespace winrt::Winvert4::implementation
             self->m_isDragging = false;
 
             POINTS pts = MAKEPOINTS(lParam);
-            self->m_ptEnd = { pts.x, pts.y };
+            self->m_ptEnd = { pts.x, pts.y }; // Client coords
 
             RECT sel = self->MakeRectFromPoints(self->m_ptStart, self->m_ptEnd);
 
@@ -545,12 +604,35 @@ namespace winrt::Winvert4::implementation
         case WM_KEYDOWN:
             if (wParam == VK_ESCAPE)
             {
-                if (self) { self->m_isDragging = false; self->m_isSelecting = false; }
+                if (self) {
+                    self->m_isDragging = false;
+                    self->m_isSelecting = false;
+                    self->m_pendingEffect = PendingEffect::None;
+                }
                 DestroyWindow(hwnd);
                 winvert4::Log("MainWindow: selection cancelled via ESC");
                 return 0;
             }
+            else if (wParam >= '1' && wParam <= '9')
+            {
+                if (!self) break;
+                int monitorIndex = static_cast<int>(wParam - '1');
+                if (monitorIndex >= 0 && monitorIndex < static_cast<int>(s_monitorRects.size()))
+                {
+                    self->m_isDragging = false;
+                    self->m_isSelecting = false;
+                    ReleaseCapture();
+
+                    // The monitor rect is already in virtual screen coordinates
+                    self->OnSelectionCompleted(s_monitorRects[monitorIndex]);
+
+                    DestroyWindow(hwnd);
+                    winvert4::Logf("MainWindow: selection via monitor #%d", monitorIndex + 1);
+                    return 0;
+                }
+            }
             break;
+
 
         case WM_PAINT:
         {
@@ -559,28 +641,74 @@ namespace winrt::Winvert4::implementation
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint(hwnd, &ps);
 
-            if (self->m_screenMemDC && self->m_screenBmp)
+            // Double-buffered painting to eliminate flicker
+            const int bufW = self->m_screenSize.cx;
+            const int bufH = self->m_screenSize.cy;
+            HDC memDC = CreateCompatibleDC(hdc);
+            HBITMAP memBmp = CreateCompatibleBitmap(hdc, bufW, bufH);
+            HGDIOBJ oldBmp = SelectObject(memDC, memBmp);
+
+            Gdiplus::Graphics graphics(memDC);
+            graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+
+            // 1. Draw the captured screen bitmap as the base layer.
+            if (self->m_screenBmp)
             {
-                HGDIOBJ old = SelectObject(self->m_screenMemDC, self->m_screenBmp);
-                BitBlt(hdc, 0, 0, self->m_screenSize.cx, self->m_screenSize.cy,
-                       self->m_screenMemDC, 0, 0, SRCCOPY);
-                SelectObject(self->m_screenMemDC, old);
+                Gdiplus::Bitmap bitmap(self->m_screenBmp, NULL);
+                graphics.DrawImage(&bitmap, 0, 0);
             }
 
+            // 2. Draw a semi-transparent overlay on top to dim the screen.
+            Gdiplus::SolidBrush overlayBrush(Gdiplus::Color(128, 0, 0, 0));
+            graphics.FillRectangle(&overlayBrush, 0, 0, bufW, bufH);
+
+            // 3. Draw monitor numbers and instructions.
+            Gdiplus::Font numFont(L"Arial", 72, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+            Gdiplus::Font instructionFont(L"Segoe UI", 24, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+            Gdiplus::SolidBrush textBrush(Gdiplus::Color(255, 255, 255, 255));
+            Gdiplus::StringFormat stringFormat;
+            stringFormat.SetAlignment(Gdiplus::StringAlignmentCenter);
+            stringFormat.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+
+            if (self->m_showSelectionInstructions && !s_monitorRects.empty())
+            {
+                RECT instructionRect = s_monitorRects[0];
+                OffsetRect(&instructionRect, -self->m_virtualOrigin.x, -self->m_virtualOrigin.y);
+                Gdiplus::RectF instructionRectF(
+                    (Gdiplus::REAL)instructionRect.left, (Gdiplus::REAL)instructionRect.top,
+                    (Gdiplus::REAL)(instructionRect.right - instructionRect.left), (Gdiplus::REAL)100);
+                graphics.DrawString(L"Click and drag to select a region, or press a number to select a display.", -1, &instructionFont, instructionRectF, &stringFormat, &textBrush);
+            }
+
+            for (size_t i = 0; i < s_monitorRects.size(); ++i)
+            {
+                RECT textRect = s_monitorRects[i];
+                OffsetRect(&textRect, -self->m_virtualOrigin.x, -self->m_virtualOrigin.y);
+                Gdiplus::RectF textRectF((Gdiplus::REAL)textRect.left, (Gdiplus::REAL)textRect.top, (Gdiplus::REAL)(textRect.right - textRect.left), (Gdiplus::REAL)(textRect.bottom - textRect.top));
+                std::wstring monitorText = std::to_wstring(i + 1);
+                graphics.DrawString(monitorText.c_str(), -1, &numFont, textRectF, &stringFormat, &textBrush);
+            }
+
+            // 4. If dragging, draw the selection rectangle on top.
             if (self->m_isDragging)
             {
                 RECT r = self->MakeRectFromPoints(self->m_ptStart, self->m_ptEnd);
-
-                HPEN pen = CreatePen(PS_SOLID, 2, RGB(255, 0, 0));
-                HGDIOBJ oldPen = SelectObject(hdc, pen);
-                HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(HOLLOW_BRUSH));
-
-                Rectangle(hdc, r.left, r.top, r.right, r.bottom);
-
-                SelectObject(hdc, oldBrush);
-                SelectObject(hdc, oldPen);
-                DeleteObject(pen);
+                Gdiplus::Color penColor(255, GetRValue(self->m_selectionColor), GetGValue(self->m_selectionColor), GetBValue(self->m_selectionColor));
+                Gdiplus::Pen selectionPen(penColor, 2.0f);
+                graphics.DrawRectangle(&selectionPen,
+                    static_cast<INT>(r.left),
+                    static_cast<INT>(r.top),
+                    static_cast<INT>(r.right - r.left),
+                    static_cast<INT>(r.bottom - r.top));
             }
+
+            // Present the back buffer
+            BitBlt(hdc, 0, 0, bufW, bufH, memDC, 0, 0, SRCCOPY);
+
+            // Cleanup
+            SelectObject(memDC, oldBmp);
+            DeleteObject(memBmp);
+            DeleteDC(memDC);
 
             EndPaint(hwnd, &ps);
             return 0;

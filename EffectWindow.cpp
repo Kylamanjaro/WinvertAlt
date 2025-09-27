@@ -28,11 +28,21 @@ namespace {
     static const char* kPS = R"(
         Texture2D srcTex : register(t0);
         SamplerState samp0 : register(s0);
+        cbuffer PixelCB : register(b1) {
+            uint enableInvert;
+            uint enableGrayscale;
+        };
+
         struct PSIn { float4 pos:SV_Position; float2 uv:TEXCOORD0; };
+
         float4 main(PSIn i) : SV_Target {
           float4 c = srcTex.Sample(samp0, i.uv);
-          float3 inv = 1.0 - c.rgb;
-          return float4(inv, 1.0);
+          float3 result = c.rgb;
+          if (enableInvert) { result = 1.0 - result; }
+          if (enableGrayscale) {
+              result = dot(result, float3(0.299, 0.587, 0.114));
+          }
+          return float4(result, 1.0);
         })";
 }
 
@@ -61,6 +71,11 @@ EffectWindow::~EffectWindow()
 // calls Render() directly, but it's required to satisfy the interface.
 void EffectWindow::OnFrameReady(ComPtr<ID3D11Texture2D>)
 {
+}
+
+void EffectWindow::UpdateSettings(const EffectSettings& settings)
+{
+    m_settings = settings;
 }
 
 void EffectWindow::Show()
@@ -142,7 +157,7 @@ void EffectWindow::EnsureSRVLocked_(ID3D11Texture2D* currentTex)
     }
 }
 
-void EffectWindow::UpdateCBForRegion_()
+void EffectWindow::UpdateCBs_()
 {
     RECT outRect = m_thread->GetOutputRect();
     const float outW = float(outRect.right - outRect.left);
@@ -153,14 +168,21 @@ void EffectWindow::UpdateCBForRegion_()
     const float selW = float(m_desktopRect.right  - m_desktopRect.left);
     const float selH = float(m_desktopRect.bottom - m_desktopRect.top);
 
-    CBData cb{};
-    cb.scale[0]  = (outW > 0) ? (selW / outW) : 0.0f;
-    cb.scale[1]  = (outH > 0) ? (selH / outH) : 0.0f;
-    cb.offset[0] = (outW > 0) ? (selL / outW) : 0.0f;
-    cb.offset[1] = (outH > 0) ? (selT / outH) : 0.0f;
+    // Update Vertex Shader CB
+    VertexCB vcb{};
+    vcb.scale[0]  = (outW > 0) ? (selW / outW) : 0.0f;
+    vcb.scale[1]  = (outH > 0) ? (selH / outH) : 0.0f;
+    vcb.offset[0] = (outW > 0) ? (selL / outW) : 0.0f;
+    vcb.offset[1] = (outH > 0) ? (selT / outH) : 0.0f;
+    m_deferredCtx->UpdateSubresource(m_cb.Get(), 0, nullptr, &vcb, 0, 0);
 
-    m_deferredCtx->UpdateSubresource(m_cb.Get(), 0, nullptr, &cb, 0, 0);
-    winvert4::Logf("EW: CB scale=(%.3f,%.3f) offset=(%.3f,%.3f)", cb.scale[0], cb.scale[1], cb.offset[0], cb.offset[1]);
+    // Update Pixel Shader CB
+    PixelCB pcb{};
+    pcb.enableInvert = m_settings.isInvertEffectEnabled;
+    pcb.enableGrayscale = m_settings.isGrayscaleEffectEnabled;
+    m_deferredCtx->UpdateSubresource(m_pixelCb.Get(), 0, nullptr, &pcb, 0, 0);
+
+    winvert4::Logf("EW: CB scale=(%.3f,%.3f) offset=(%.3f,%.3f)", vcb.scale[0], vcb.scale[1], vcb.offset[0], vcb.offset[1]);
 }
 
 void EffectWindow::CreateAndShow()
@@ -241,8 +263,11 @@ void EffectWindow::CreateAndShow()
     D3D11_SUBRESOURCE_DATA srd{}; srd.pSysMem = kFSVerts;
     if (FAILED(m_d3d->CreateBuffer(&bd, &srd, &m_vb))) return;
 
-    D3D11_BUFFER_DESC cbd{}; cbd.ByteWidth = sizeof(CBData); cbd.Usage = D3D11_USAGE_DEFAULT; cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-    if (FAILED(m_d3d->CreateBuffer(&cbd, nullptr, &m_cb))) return;
+    D3D11_BUFFER_DESC vscbd{}; vscbd.ByteWidth = sizeof(VertexCB); vscbd.Usage = D3D11_USAGE_DEFAULT; vscbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    if (FAILED(m_d3d->CreateBuffer(&vscbd, nullptr, &m_cb))) return;
+
+    D3D11_BUFFER_DESC pscbd{}; pscbd.ByteWidth = sizeof(PixelCB); pscbd.Usage = D3D11_USAGE_DEFAULT; pscbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    if (FAILED(m_d3d->CreateBuffer(&pscbd, nullptr, &m_pixelCb))) return;
 
     D3D11_SAMPLER_DESC sampd{}; sampd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
     sampd.AddressU = sampd.AddressV = sampd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
@@ -306,10 +331,13 @@ void EffectWindow::Render(ID3D11Texture2D* frame)
     m_deferredCtx->RSSetViewports(1, &vp);
 
     m_deferredCtx->VSSetShader(m_vs.Get(), nullptr, 0);
-    ID3D11Buffer* cb = m_cb.Get();
-    m_deferredCtx->VSSetConstantBuffers(0, 1, &cb);
+    ID3D11Buffer* vscb = m_cb.Get();
+    m_deferredCtx->VSSetConstantBuffers(0, 1, &vscb);
 
     m_deferredCtx->PSSetShader(m_ps.Get(), nullptr, 0);
+    ID3D11Buffer* pscb = m_pixelCb.Get();
+    m_deferredCtx->PSSetConstantBuffers(1, 1, &pscb);
+
     ID3D11SamplerState* ss = m_samp.Get();
     m_deferredCtx->PSSetSamplers(0, 1, &ss);
     ID3D11ShaderResourceView* srv = m_srv.Get();
@@ -319,7 +347,7 @@ void EffectWindow::Render(ID3D11Texture2D* frame)
     m_deferredCtx->OMSetRenderTargets(1, &rtv, nullptr);
 
     // Update constants & draw (invert handled in pixel shader)
-    UpdateCBForRegion_();
+    UpdateCBs_();
 
     const float clear[4] = { 0,0,0,0 };
     m_deferredCtx->ClearRenderTargetView(localRTV.Get(), clear);

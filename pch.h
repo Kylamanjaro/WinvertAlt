@@ -12,6 +12,8 @@
 #pragma comment(lib, "Gdi32.lib")
 #pragma comment(lib, "User32.lib")
 #pragma comment(lib, "Comctl32.lib")
+#pragma comment(lib, "Msimg32.lib")
+#pragma comment(lib, "gdiplus.lib")
 
 // ---- C++/WinRT & Windows App SDK ----
 #include <winrt/Windows.Foundation.h>

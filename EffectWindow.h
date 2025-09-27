@@ -1,6 +1,7 @@
 #pragma once
 #include "pch.h"
 #include "Subscription.h"
+#include "EffectSettings.h"
 #include <mutex>
 #include <condition_variable>
 
@@ -16,6 +17,7 @@ public:
 
     void Show();
     void Hide();
+    void UpdateSettings(const EffectSettings& settings);
 
     // Called by DuplicationThread to render a frame
     void Render(ID3D11Texture2D* frame);
@@ -28,7 +30,7 @@ private:
     void CreateAndShow();
 
     void EnsureSRVLocked_(ID3D11Texture2D* currentTex);
-    void UpdateCBForRegion_();
+    void UpdateCBs_();
 
 private:
     // Geometry/placement
@@ -52,7 +54,14 @@ private:
     ::Microsoft::WRL::ComPtr<ID3D11SamplerState>      m_samp;
     ::Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_srv;
 
-    struct CBData { float scale[2]; float offset[2]; };
+    struct VertexCB { float scale[2]; float offset[2]; };
+    struct PixelCB {
+        uint32_t enableInvert;
+        uint32_t enableGrayscale;
+        float _pad[2]; // HLSL padding
+    };
+    ::Microsoft::WRL::ComPtr<ID3D11Buffer> m_pixelCb;
+    EffectSettings m_settings{};
 
     ID3D11Texture2D* m_srvSourceRaw{ nullptr }; // track which texture SRV is built from
 
