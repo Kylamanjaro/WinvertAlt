@@ -11,6 +11,7 @@
 // ---- Link required Win32 libs ----
 #pragma comment(lib, "Gdi32.lib")
 #pragma comment(lib, "User32.lib")
+#pragma comment(lib, "Comctl32.lib")
 
 // ---- C++/WinRT & Windows App SDK ----
 #include <winrt/Windows.Foundation.h>
@@ -30,6 +31,7 @@
 #include <winrt/Microsoft.UI.Xaml.Navigation.h>
 #include <winrt/Microsoft.UI.Xaml.Shapes.h>
 #include <winrt/Microsoft.UI.Xaml.Media.h>
+#include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
 
 #include <winrt/Windows.Graphics.DirectX.Direct3D11.h>
 #include <winrt/Windows.Graphics.Capture.h>

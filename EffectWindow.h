@@ -6,11 +6,12 @@
 
 // Forward decl
 class DuplicationThread;
+class OutputManager;
 
 class EffectWindow : public ISubscriber
 {
 public:
-    explicit EffectWindow(RECT desktopRect);
+    explicit EffectWindow(RECT desktopRect, OutputManager* outputManager);
     ~EffectWindow();
 
     void Show();
@@ -60,4 +61,7 @@ private:
 
     // Source duplication thread (not owned)
     DuplicationThread* m_thread{ nullptr };
+
+    // Owning manager (not owned)
+    OutputManager* m_outputManager{ nullptr };
 };

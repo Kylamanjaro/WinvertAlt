@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <Window
     x:Class="Winvert4.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -6,10 +5,271 @@
     xmlns:local="using:Winvert4"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d"
-    Title="Winvert4">
+    mc:Ignorable="d">
 
-    <Grid PointerPressed="OnPointerPressed" PointerMoved="OnPointerMoved" PointerReleased="OnPointerReleased">
-        <Canvas x:Name="SelectionOverlay" Visibility="Collapsed"/>
+    <Grid>
+        <!-- Main Control Panel with Tabs -->
+        <StackPanel x:Name="RootPanel" Orientation="Vertical" HorizontalAlignment="Stretch" VerticalAlignment="Top" Spacing="5" Padding="10">
+            <TabView x:Name="RegionsTabView"
+                     IsAddTabButtonVisible="True"
+                     TabWidthMode="SizeToContent"
+                     AddTabButtonClick="RegionsTabView_AddTabButtonClick"
+                     TabCloseRequested="RegionsTabView_TabCloseRequested"
+                     SelectionChanged="RegionsTabView_SelectionChanged">
+                <TabView.TabStripFooter>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" RequestedTheme="Light" MinWidth="40" Margin="8,0,0,0">
+                        <Button x:Name="SettingsButton" Click="SettingsButton_Click" Width="32" Height="32" MinWidth="32" MinHeight="32" Padding="0" ToolTipService.ToolTip="Open Settings">
+                            <Image Source="Assets/settings.svg" Width="20" Height="20" IsHitTestVisible="False"/>
+                        </Button>
+                    </StackPanel>
+                </TabView.TabStripFooter>
+            </TabView>
+
+            <InfoBar x:Name="InfoBar"
+                     IsOpen="False"
+                     Severity="Informational"
+                     Title="No Active Regions"
+                     Message="Use a hotkey or the + button to create a region."
+                     Closed="InfoBar_Closed"/>
+
+            <Grid ColumnSpacing="5" RequestedTheme="Light" HorizontalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Button x:Name="InvertEffectButton" Grid.Column="0" Click="InvertEffect_Click" Width="36" Height="36" Padding="0" ToolTipService.ToolTip="Toggle Invert">
+                    <Image x:Name="InvertEffectImage" Width="26" Height="26" IsHitTestVisible="False"/>
+                </Button>
+                <Button x:Name="BrightnessProtectionButton" Grid.Column="1" Click="BrightnessProtection_Click" Width="36" Height="36" Padding="0" ToolTipService.ToolTip="Brightness Protection">
+                    <Image x:Name="BrightnessProtectionImage" Width="26" Height="26" IsHitTestVisible="False"/>
+                </Button>
+                <Button x:Name="GrayscaleEffectButton" Grid.Column="2" Click="GrayscaleEffect_Click" Width="36" Height="36" Padding="0" ToolTipService.ToolTip="Toggle Grayscale">
+                    <Image x:Name="GrayscaleEffectImage" Width="26" Height="26" IsHitTestVisible="False"/>
+                </Button>
+                <Button x:Name="FiltersDropDownButton" Grid.Column="3" Width="36" Height="36" Padding="0" ToolTipService.ToolTip="Select Custom Filter">
+                    <Image Source="Assets/filter.svg" Width="26" Height="26" IsHitTestVisible="False"/>
+                    <Button.Flyout>
+                        <MenuFlyout x:Name="FiltersMenuFlyout"/>
+                    </Button.Flyout>
+                </Button>
+                <Button x:Name="HideAllWindowsButton" Grid.Column="4" Click="HideAllWindows_Click" Width="36" Height="36" Padding="0" ToolTipService.ToolTip="Hide/Show Region">
+                    <Image x:Name="HideAllWindowsImage" Width="26" Height="26" IsHitTestVisible="False"/>
+                </Button>
+            </Grid>
+
+        </StackPanel>
+
+        <!-- Settings Panel (Initially Hidden) -->
+        <Grid x:Name="SettingsPanel" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Sticky Header -->
+            <Grid Grid.Row="0" Padding="15,10,15,10" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Button x:Name="BackButton" Grid.Column="0" Content="Back" Click="BackButton_Click" VerticalAlignment="Center" Margin="0,0,15,0"/>
+                <TextBlock Grid.Column="1" Text="Settings" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+            </Grid>
+
+            <!-- Two-column settings content -->
+            <Grid x:Name="SettingsContentGrid" Grid.Row="1" ColumnSpacing="24" SizeChanged="SettingsPanel_SizeChanged">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="MainColumn" Width="*"/>
+                    <ColumnDefinition x:Name="AboutColumn" Width="0"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Left column: cards -->
+                <ScrollViewer Grid.Column="0">
+                    <StackPanel Spacing="12" Padding="15">
+                        <!-- Brightness Protection Card -->
+                        <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
+                            <Expander x:Name="BrightnessExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                                <Expander.Header>
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="Brightness protection" FontWeight="SemiBold"/>
+                                            <TextBlock Text="Automatically choose the darker result" Opacity="0.7"/>
+                                        </StackPanel>
+                                        <!-- No On/Off toggle per request -->
+                                    </Grid>
+                                </Expander.Header>
+                                <StackPanel Spacing="8" Padding="8,4,0,8" HorizontalAlignment="Left">
+                                    <TextBlock Text="Activation delay (frames)"/>
+                                    <NumberBox x:Name="BrightnessDelayNumberBox" Minimum="1" Maximum="60" Value="1" SpinButtonPlacementMode="Compact" ValueChanged="BrightnessDelayNumberBox_ValueChanged"/>
+                                    <TextBlock Text="Target pixels for downsample (≈)"/>
+                                    <NumberBox x:Name="DownsampleTargetPixelsNumberBox" Minimum="16" Maximum="4096" Value="256" SmallChange="16" LargeChange="64" SpinButtonPlacementMode="Compact" ValueChanged="DownsampleTargetPixelsNumberBox_ValueChanged"/>
+                                </StackPanel>
+                            </Expander>
+                        </Border>
+
+                        <!-- Appearance / Border Color Card -->
+                        <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
+                            <Expander x:Name="SelectionColorExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                                <Expander.Header>
+                                    <TextBlock Text="Selection border color" FontWeight="SemiBold"/>
+                                </Expander.Header>
+                                <StackPanel Spacing="8" Padding="8,4,0,8" HorizontalAlignment="Left">
+                                    <ColorPicker x:Name="SelectionColorPicker" ColorSpectrumShape="Ring" IsAlphaEnabled="False" ColorChanged="SelectionColorPicker_ColorChanged"/>
+                                </StackPanel>
+                            </Expander>
+                        </Border>
+
+                        <!-- Update Rate Card -->
+                        <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
+                            <Expander x:Name="UpdateRateExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                                <Expander.Header>
+                                    <TextBlock Text="Update rate" FontWeight="SemiBold"/>
+                                </Expander.Header>
+                                <StackPanel Spacing="8" Padding="8,4,0,8">
+                                    <ComboBox x:Name="FpsComboBox" SelectionChanged="FpsComboBox_SelectionChanged" HorizontalAlignment="Left">
+                                        <ComboBoxItem Content="Auto"/>
+                                        <ComboBoxItem Content="30 FPS"/>
+                                        <ComboBoxItem Content="60 FPS"/>
+                                        <ComboBoxItem Content="120 FPS"/>
+                                        <ComboBoxItem Content="144 FPS"/>
+                                    </ComboBox>
+                                    <ToggleSwitch x:Name="ShowFpsToggle" Header="Show FPS overlay" IsOn="True" Toggled="ShowFpsToggle_Toggled"/>
+                                </StackPanel>
+                            </Expander>
+                        </Border>
+
+                        <!-- Hotkeys Card -->
+                        <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
+                            <Expander x:Name="HotkeysExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                                <Expander.Header>
+                                    <TextBlock Text="Hotkeys" FontWeight="SemiBold"/>
+                                </Expander.Header>
+                                <StackPanel Spacing="8" Padding="8,4,0,8">
+                                    <Grid ColumnSpacing="10" RowSpacing="5">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="InvertHotkeyTextBox" Grid.Row="0" Grid.Column="0" IsReadOnly="True" />
+                                        <Button x:Name="RebindInvertHotkeyButton" Grid.Row="0" Grid.Column="1" Content="Rebind Invert/Add" Click="RebindInvertHotkeyButton_Click"/>
+                                        <TextBox x:Name="GrayscaleHotkeyTextBox" Grid.Row="1" Grid.Column="0" IsReadOnly="True" />
+                                        <Button x:Name="RebindGrayscaleHotkeyButton" Grid.Row="1" Grid.Column="1" Content="Rebind Grayscale/Add" Click="RebindGrayscaleHotkeyButton_Click"/>
+                                        <TextBox x:Name="RemoveHotkeyTextBox" Grid.Row="2" Grid.Column="0" IsReadOnly="True" />
+                                        <Button x:Name="RebindRemoveHotkeyButton" Grid.Row="2" Grid.Column="1" Content="Rebind Remove Last" Click="RebindRemoveHotkeyButton_Click"/>
+                                    </Grid>
+                                    <TextBlock x:Name="RebindStatusText"/>
+                                </StackPanel>
+                            </Expander>
+                        </Border>
+
+                        <!-- Custom Filters editor as Expander -->
+                        <Border Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="12">
+                            <Expander x:Name="CustomFiltersExpander"
+                                      HorizontalAlignment="Stretch"
+                                      HorizontalContentAlignment="Stretch"
+                                      Collapsed="CustomFiltersExpander_Collapsed">
+                                <Expander.Header>
+                                    <TextBlock Text="Custom filters" FontWeight="SemiBold"/>
+                                </Expander.Header>
+                                <StackPanel Spacing="8">
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <ComboBox x:Name="SavedFiltersComboBox" Grid.Column="0" HorizontalAlignment="Stretch" SelectionChanged="SavedFiltersComboBox_SelectionChanged"/>
+                                        <Button x:Name="AddNewFilterButton" Grid.Column="1" Content="Add" Click="AddNewFilterButton_Click" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                    </Grid>
+                                    <!-- Editor panel -->
+                                    <StackPanel x:Name="FilterEditorPanel" Spacing="5" Visibility="Collapsed">
+                                        <TextBlock Text="Filter Name"/>
+                                        <TextBox x:Name="FilterNameTextBox"/>
+                                        <Grid Margin="0,10,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="60"/>
+                                                <ColumnDefinition Width="60"/>
+                                                <ColumnDefinition Width="60"/>
+                                                <ColumnDefinition Width="60"/>
+                                                <ColumnDefinition Width="60"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="R" HorizontalAlignment="Center"/>
+                                            <TextBlock Grid.Column="1" Text="G" HorizontalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="B" HorizontalAlignment="Center"/>
+                                            <TextBlock Grid.Column="3" Text="A" HorizontalAlignment="Center"/>
+                                        </Grid>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" Spacing="5" Margin="0,0,5,0">
+                                                <TextBlock Text="Red" Height="32" VerticalAlignment="Center"/>
+                                                <TextBlock Text="Green" Height="32" VerticalAlignment="Center"/>
+                                                <TextBlock Text="Blue" Height="32" VerticalAlignment="Center"/>
+                                                <TextBlock Text="Alpha" Height="32" VerticalAlignment="Center"/>
+                                                <TextBlock Text="Offset" Height="32" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <Grid x:Name="FilterMatrixGrid" Grid.Column="1" ColumnSpacing="5" RowSpacing="5">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="60"/>
+                                                    <ColumnDefinition Width="60"/>
+                                                    <ColumnDefinition Width="60"/>
+                                                    <ColumnDefinition Width="60"/>
+                                                    <ColumnDefinition Width="60"/>
+                                                </Grid.ColumnDefinitions>
+                                            </Grid>
+                                        </Grid>
+                                        <StackPanel Orientation="Horizontal" Spacing="5" Margin="0,10,0,0">
+                                            <Button x:Name="SaveFilterButton" Content="Save" Click="SaveFilterButton_Click"/>
+                                            <Button x:Name="DeleteFilterButton" Content="Delete" Click="DeleteFilterButton_Click" IsEnabled="False"/>
+                                            <Button x:Name="ClearFilterButton" Content="Clear" Click="ClearFilterButton_Click"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Expander>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Right column: About -->
+                <ScrollViewer x:Name="AboutScroll" Grid.Column="1" Visibility="Collapsed">
+                    <StackPanel Spacing="12" Padding="0,15,15,15">
+                        <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="About this app" FontSize="18" FontWeight="SemiBold"/>
+                                <TextBlock Text="Winvert" FontWeight="SemiBold"/>
+                                <TextBlock Text="Version --" Opacity="0.7"/>
+                                <HyperlinkButton Content="License" NavigateUri="https://github.com/"/>
+                                <HyperlinkButton Content="Privacy" NavigateUri="https://github.com/"/>
+                                <Button Content="Send feedback"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
     </Grid>
 </Window>
+

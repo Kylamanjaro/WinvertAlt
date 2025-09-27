@@ -51,6 +51,26 @@ By adopting **Desktop Duplication** and **GPU shaders**:
 
 ---
 
+## UI
+
+- **Control Panel**
+  - Minimal Window with a tabbed display
+    - Each window is it's own tab each with buttons controlling the windows state
+    - Buttons
+      - Settings button to navigate to fullscreen settings page on tab structure
+      - Invert toggle
+      - Brightness Protection
+      - Grayscale toggle
+      - Filter flyout
+      - Hide toggle
+
+- **Settings Page**
+  - Full screen page that hides all window on navigation
+  - Each settings section is an expandable card
+  - About section on right pane only when the window is fullscreen
+  - Back button takes you back to control panel
+---
+
 ## Agent Rules
 - Ignore the following folders:
   - Assets/
@@ -63,6 +83,7 @@ By adopting **Desktop Duplication** and **GPU shaders**:
 - Agent is not permitted to create new files or move files within the project
   - Agent must request for these actions to be done
 
+---
 
 ## Next Steps (template)
 Output manager

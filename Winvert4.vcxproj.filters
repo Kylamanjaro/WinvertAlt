@@ -12,9 +12,17 @@
   <ItemGroup>
     <ClCompile Include="pch.cpp" />
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
+    <ClCompile Include="DuplicationThread.cpp" />
+    <ClCompile Include="EffectWindow.cpp" />
+    <ClCompile Include="OutputManager.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
+    <ClInclude Include="DuplicationThread.h" />
+    <ClInclude Include="EffectWindow.h" />
+    <ClInclude Include="OutputManager.h" />
+    <ClInclude Include="Subscription.h" />
+    <ClInclude Include="EffectSettings.h" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="Assets\Wide310x150Logo.scale-200.png">
@@ -55,5 +63,47 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="$(MSBuildThisFileDirectory)..\..\natvis\wil.natvis" />
+    <Natvis Include="$(MSBuildThisFileDirectory)..\..\natvis\wil.natstepfilter" />
+  </ItemGroup>
+  <ItemGroup>
+    <Media Include="Assets\add.svg">
+      <Filter>Assets</Filter>
+    </Media>
+    <Media Include="Assets\filter.svg">
+      <Filter>Assets</Filter>
+    </Media>
+    <Media Include="Assets\glasses_off.svg">
+      <Filter>Assets</Filter>
+    </Media>
+    <Media Include="Assets\glasses_on.svg">
+      <Filter>Assets</Filter>
+    </Media>
+    <Media Include="Assets\grayscale_off.svg">
+      <Filter>Assets</Filter>
+    </Media>
+    <Media Include="Assets\grayscale_on.svg">
+      <Filter>Assets</Filter>
+    </Media>
+    <Media Include="Assets\hide.svg">
+      <Filter>Assets</Filter>
+    </Media>
+    <Media Include="Assets\invert_off.svg">
+      <Filter>Assets</Filter>
+    </Media>
+    <Media Include="Assets\invert_on.svg">
+      <Filter>Assets</Filter>
+    </Media>
+    <Media Include="Assets\remove.svg">
+      <Filter>Assets</Filter>
+    </Media>
+    <Media Include="Assets\settings.svg">
+      <Filter>Assets</Filter>
+    </Media>
+    <Media Include="Assets\show.svg">
+      <Filter>Assets</Filter>
+    </Media>
   </ItemGroup>
 </Project>

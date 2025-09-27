@@ -1,14 +1,17 @@
 #pragma once
 #include "MainWindow.g.h"
 #include "EffectWindow.h"
+#include "OutputManager.h"
 #include <vector>
 #include <memory>
+#include "EffectSettings.h"
 
 namespace winrt::Winvert4::implementation
 {
     struct MainWindow : MainWindowT<MainWindow>
     {
         MainWindow();
+        ~MainWindow();
 
         int32_t MyProperty();
         void MyProperty(int32_t value);
@@ -16,12 +19,53 @@ namespace winrt::Winvert4::implementation
         void ToggleSnipping();
         void StartScreenSelection();
 
+        // --- XAML Event Handlers ---
+        void BrightnessProtection_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void InvertEffect_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void GrayscaleEffect_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void AddWindow_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void RemoveWindow_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void HideAllWindows_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void SettingsButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void BackButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void SettingsPanel_SizeChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::SizeChangedEventArgs const&);
+        void CollapseAllSettingsExpanders();
+        void UpdateSettingsColumnsForWindowState();
+        void CustomFiltersExpander_Collapsed(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::ExpanderCollapsedEventArgs const&);
+        void BrightnessThresholdNumberBox_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
+        void BrightnessDelayNumberBox_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
+        void DownsampleTargetPixelsNumberBox_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
+        void FpsComboBox_SelectionChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
+        void ShowFpsToggle_Toggled(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void RebindInvertHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void RebindGrayscaleHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void RebindRemoveHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void SelectionColorPicker_ColorChanged(winrt::Microsoft::UI::Xaml::Controls::ColorPicker const&, winrt::Microsoft::UI::Xaml::Controls::ColorChangedEventArgs const&);
+
+        // --- Tab and Flyout Handlers ---
+        void InfoBar_Closed(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::InfoBarClosedEventArgs const&);
+        void FiltersMenuFlyout_Closing(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::Primitives::FlyoutBaseClosingEventArgs const&);
+        void RegionsTabView_AddTabButtonClick(winrt::Windows::Foundation::IInspectable const&, winrt::Windows::Foundation::IInspectable const&);
+        void RegionsTabView_TabCloseRequested(winrt::Microsoft::UI::Xaml::Controls::TabView const&, winrt::Microsoft::UI::Xaml::Controls::TabViewTabCloseRequestedEventArgs const&);
+        void RegionsTabView_SelectionChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
+
+        // --- Custom Filter Handlers ---
+        void AddNewFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void SaveFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void DeleteFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void ClearFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void SavedFiltersComboBox_SelectionChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
+        void FilterMenuItem_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+
+
+
         void OnPointerPressed(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const&) {}
         void OnPointerMoved(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const&) {}
         void OnPointerReleased(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const&) {}
 
     private:
         static LRESULT CALLBACK SelectionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+        static LRESULT CALLBACK WindowSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
 
         bool   m_isSelecting{ false };
         bool   m_isDragging{ false };
@@ -40,6 +84,65 @@ namespace winrt::Winvert4::implementation
         void OnSelectionCompleted(RECT sel);
 
         std::vector<std::unique_ptr<EffectWindow>> m_effectWindows;
+        std::unique_ptr<OutputManager> m_outputManager;
+        HWND m_mainHwnd{ nullptr };
+
+        // --- UI State ---
+        bool m_isAppInitialized{ false };
+        bool m_areWindowsHidden{ false };
+        bool m_wereWindowsHiddenForSettings{ false };
+        bool m_hasEverHadWindows{ false };
+        bool m_lastRemovalViaUI{ false };
+        bool m_lastRemovalInitiatedByHotkey{ false };
+        bool m_keepFiltersFlyoutOpenNext{ false };
+
+        // --- Settings ---
+        int m_brightnessThreshold{ 220 };
+        int m_brightnessProtectionDelay{ 1000 };
+        int m_downsampleTargetPixels{ 256 };
+        int m_fpsSetting{ 0 };
+        bool m_showFpsOverlay{ false };
+        COLORREF m_selectionColor{ RGB(255, 0, 0) };
+
+        // --- Hotkeys ---
+        enum class RebindingState { None, Invert, Grayscale, Remove };
+        RebindingState m_rebindingState{ RebindingState::None };
+        UINT m_hotkeyInvertMod{ MOD_WIN | MOD_SHIFT };
+        UINT m_hotkeyInvertVk{ 'I' };
+        UINT m_hotkeyGrayscaleMod{ MOD_WIN | MOD_SHIFT };
+        UINT m_hotkeyGrayscaleVk{ 'G' };
+        UINT m_hotkeyRemoveMod{ MOD_WIN | MOD_SHIFT };
+        UINT m_hotkeyRemoveVk{ 'R' };
+
+        enum class PendingEffect { None, Invert, Grayscale };
+        PendingEffect m_pendingEffect{ PendingEffect::None };
+
+        void RegisterAllHotkeys();
+        void OnInvertHotkeyPressed();
+        void OnGrayscaleHotkeyPressed();
+        void OnRemoveHotkeyPressed();
+
+        // --- Per-window state ---
+        std::vector<EffectSettings> m_windowSettings;
+        std::vector<bool> m_windowHidden;
+
+        // --- UI Helpers ---
+        void UpdateUIState();
+        void SetWindowSize(int width, int height);
+        void UpdateAllHotkeyText();
+        void UpdateHotkeyText(winrt::Microsoft::UI::Xaml::Controls::TextBox const& textBox, UINT mod, UINT vk);
+        int SelectedTabIndex();
+        HWND SelectedWindowHwnd();
+
+        // --- Icon Sources ---
+        winrt::Microsoft::UI::Xaml::Media::ImageSource m_brightnessOnIconSource{ nullptr };
+        winrt::Microsoft::UI::Xaml::Media::ImageSource m_brightnessOffIconSource{ nullptr };
+        winrt::Microsoft::UI::Xaml::Media::ImageSource m_hideIconSource{ nullptr };
+        winrt::Microsoft::UI::Xaml::Media::ImageSource m_showIconSource{ nullptr };
+        winrt::Microsoft::UI::Xaml::Media::ImageSource m_invertOnIconSource{ nullptr };
+        winrt::Microsoft::UI::Xaml::Media::ImageSource m_invertOffIconSource{ nullptr };
+        winrt::Microsoft::UI::Xaml::Media::ImageSource m_grayscaleOnIconSource{ nullptr };
+        winrt::Microsoft::UI::Xaml::Media::ImageSource m_grayscaleOffIconSource{ nullptr };
     };
 }
 

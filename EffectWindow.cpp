@@ -46,8 +46,9 @@ LRESULT CALLBACK EffectWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
-EffectWindow::EffectWindow(RECT desktopRect)
+EffectWindow::EffectWindow(RECT desktopRect, OutputManager* outputManager)
     : m_desktopRect(desktopRect)
+    , m_outputManager(outputManager)
 {
 }
 
@@ -65,18 +66,12 @@ void EffectWindow::OnFrameReady(ComPtr<ID3D11Texture2D>)
 void EffectWindow::Show()
 {
     winvert4::Log("EffectWindow::Show called");
-    winvert4::Logf("EW.Show rect=(%ld,%ld,%ld,%ld)", m_desktopRect.left, m_desktopRect.top, m_desktopRect.right, m_desktopRect.bottom);
 
     // 1) Resolve duplication thread and D3D device/context
-    auto app = winrt::Winvert4::implementation::App::Current();
-    winvert4::Log(app ? "EW.Show got App::Current" : "EW.Show App::Current is null");
-    if (!app) return;
-    auto outputManager = app->GetOutputManager();
-    winvert4::Log(outputManager ? "EW.Show got OutputManager" : "EW.Show GetOutputManager returned null");
-    if (!outputManager) return;
+    if (!m_outputManager) return;
 
     winvert4::Log("EW.Show calling GetThreadForRect");
-    m_thread = outputManager->GetThreadForRect(m_desktopRect);
+    m_thread = m_outputManager->GetThreadForRect(m_desktopRect);
     winvert4::Logf("EW.Show thread=%p", (void*)m_thread);
     if (!m_thread) return;
 
