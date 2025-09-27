@@ -68,11 +68,20 @@ namespace winrt::Winvert4::implementation
         SetWindowSubclass(m_mainHwnd, &MainWindow::WindowSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
 
         RegisterAllHotkeys();
+
+        // Hide the control panel until the first selection creates a window.
+        // We will show it in OnSelectionCompleted() once a region is added.
+        ::ShowWindow(m_mainHwnd, SW_HIDE);
+
         UpdateUIState();
         UpdateAllHotkeyText();
-        SetWindowSize(360, 120); // Set initial size for the main panel
+        SetWindowSize(360, 120); // Prepare initial size, but keep window hidden
 
         m_isAppInitialized = true;
+
+        // Do not start selection automatically. The global hotkey will start
+        // the operation (similar to Snipping Tool) after app launch.
+
         winvert4::Log("MainWindow: ctor end");
     }
 
@@ -525,6 +534,15 @@ namespace winrt::Winvert4::implementation
         RegionsTabView().SelectedItem(newTab);
 
         m_effectWindows.push_back(std::move(newWindow));
+
+        // Reveal the control panel window after first selection is created
+        if (!m_controlPanelShownYet)
+        {
+            ::ShowWindow(m_mainHwnd, SW_SHOW);
+            m_controlPanelShownYet = true;
+            UpdateUIState();
+            SetWindowSize(360, 120);
+        }
     }
 
 

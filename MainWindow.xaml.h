@@ -109,6 +109,7 @@ namespace winrt::Winvert4::implementation
         int m_fpsSetting{ 0 };
         bool m_showFpsOverlay{ false };
         COLORREF m_selectionColor{ RGB(255, 0, 0) };
+        bool m_controlPanelShownYet{ false };
 
         // --- Hotkeys ---
         enum class RebindingState { None, Invert, Grayscale, Remove };

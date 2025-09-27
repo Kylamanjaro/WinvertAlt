@@ -32,5 +32,17 @@ namespace winrt::Winvert4::implementation
     {
         m_window = make<winrt::Winvert4::implementation::MainWindow>();
         m_window.Activate();
+
+        // Hide the window immediately after activation so the app runs
+        // headless until the user presses the global hotkey to begin
+        // selection (Snipping Tool–style behavior).
+        if (auto windowNative = m_window.try_as<::IWindowNative>())
+        {
+            HWND hwnd{};
+            if (SUCCEEDED(windowNative->get_WindowHandle(&hwnd)) && hwnd)
+            {
+                ::ShowWindow(hwnd, SW_HIDE);
+            }
+        }
     }
 }
