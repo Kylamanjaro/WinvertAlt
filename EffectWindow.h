@@ -22,6 +22,8 @@ public:
     void OnFrame     (::Microsoft::WRL::ComPtr<ID3D11Texture2D> fullFrameTexture);
 
 private:
+    static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
     void RenderThreadProc();
     void CreatePipeline();
     void DestroyPipeline();

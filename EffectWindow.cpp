@@ -36,6 +36,16 @@ namespace {
         })";
 }
 
+LRESULT CALLBACK EffectWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    // Make the window completely transparent to mouse clicks
+    if (msg == WM_NCHITTEST) {
+        return HTTRANSPARENT;
+    }
+
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
 EffectWindow::EffectWindow(RECT desktopRect)
     : m_desktopRect(desktopRect)
 {
@@ -189,7 +199,7 @@ void EffectWindow::RenderThreadProc()
     if (!s_atom) {
         WNDCLASSEXW wcex{ sizeof(WNDCLASSEXW) };
         wcex.style = CS_HREDRAW | CS_VREDRAW;
-        wcex.lpfnWndProc = DefWindowProcW;
+        wcex.lpfnWndProc = &EffectWindow::WndProc;
         wcex.hInstance = GetModuleHandleW(nullptr);
         wcex.hCursor = LoadCursorW(nullptr, IDC_ARROW);
         wcex.lpszClassName = kEffectWndClass;
@@ -199,12 +209,19 @@ void EffectWindow::RenderThreadProc()
     const int w = m_desktopRect.right - m_desktopRect.left;
     const int h = m_desktopRect.bottom - m_desktopRect.top;
     m_hwnd = CreateWindowExW(
-        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT,
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE,
         kEffectWndClass, L"", WS_POPUP,
         m_desktopRect.left, m_desktopRect.top, w, h,
         nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (!m_hwnd) { winvert4::Log("EffectWindow::RenderThreadProc failed to create HWND"); return; }
     winvert4::Logf("EW: created HWND=%p size=(%dx%d)", (void*)m_hwnd, w, h);
+
+    // This is the key to making the window truly click-through.
+    // By setting LWA_COLORKEY, we tell Windows that mouse events should pass through
+    // the window as if it weren't there. The color key itself doesn't matter since
+    // we are rendering with DirectX, not GDI.
+    // This is more reliable than relying on WS_EX_TRANSPARENT alone for DX-rendered windows.
+    SetLayeredWindowAttributes(m_hwnd, 0, 255, LWA_COLORKEY);
 
     // Factory
     ComPtr<IDXGIDevice> dxgiDevice;
