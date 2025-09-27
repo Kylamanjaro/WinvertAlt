@@ -2,7 +2,7 @@
 #include "Log.h"
 #include "DuplicationThread.h"
 #include "Subscription.h"
-
+#include "EffectWindow.h"
 #include <wrl.h>
 #include <dxgi1_2.h>
 #include <d3d11.h>
@@ -246,27 +246,21 @@ void DuplicationThread::ThreadProc()
         if (frameTex && m_fullTexture) {
             // Copy frame into our shared texture
             m_context->CopyResource(m_fullTexture.Get(), frameTex.Get());
-            winvert4::Logf("DT: outputRect=(%ld,%ld,%ld,%ld) cap=(%u x %u fmt=%u) subs=%zu",
-                m_outputRect.left, m_outputRect.top, m_outputRect.right, m_outputRect.bottom,
-                texDesc.Width, texDesc.Height, texDesc.Format, m_subscriptions.size());
 
             // Probe a center patch and guard zero frames
             RECT c = CenterRect(texDesc.Width, texDesc.Height, 128, 128);
             uint64_t sum=0; uint8_t vmin=255, vmax=0;
             if (ProbeTexturePatch(m_device.Get(), m_context.Get(), m_fullTexture.Get(), c, sum, vmin, vmax)) {
-                winvert4::Logf("DT: probe center %ux%u sum=%llu min=%u max=%u",
-                    (UINT)(c.right-c.left), (UINT)(c.bottom-c.top),
-                    (unsigned long long)sum, (unsigned)vmin, (unsigned)vmax);
                 if (sum == 0) {
                     winvert4::Log("DT: zero-pixel frame detected; skipping notify");
                     m_duplication->ReleaseFrame();
                     continue;
                 }
-            } else {
-                winvert4::Log("DT: probe failed");
             }
+        }
 
-            // Notify subscribers (copy list under lock)
+        // Render to all subscribers on this thread
+        if (m_fullTexture) {
             std::vector<Subscription> subsCopy;
             {
                 std::lock_guard<std::mutex> lk(m_subMutex);
@@ -274,10 +268,10 @@ void DuplicationThread::ThreadProc()
             }
             for (auto& s : subsCopy) {
                 if (s.Subscriber) {
-                    s.Subscriber->OnFrameReady(m_fullTexture);
+                    // Cast and call the new Render method
+                    static_cast<EffectWindow*>(s.Subscriber)->Render(m_fullTexture.Get());
                 }
             }
-            winvert4::Logf("DT: notified %zu subscribers", subsCopy.size());
         }
 
         m_duplication->ReleaseFrame();

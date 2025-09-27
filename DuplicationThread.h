@@ -15,8 +15,6 @@ public:
     void RemoveSubscriber(ISubscriber* sub);
     const RECT& GetOutputRect() const { return m_outputRect; }
     ID3D11Device* GetDevice() { return m_device.Get(); }
-    std::mutex& GetContextMutex() { return m_immediateCtxMutex; }
-
 
 private:
     void ThreadProc();
@@ -33,8 +31,6 @@ private:
     std::vector<Subscription> m_subscriptions;
     std::mutex m_subMutex;
     std::condition_variable m_subCv;
-    std::mutex m_immediateCtxMutex;
     // Shared full-frame texture for this output (sampled by all subscribers)
     ::Microsoft::WRL::ComPtr<ID3D11Texture2D> m_fullTexture;
 };
-

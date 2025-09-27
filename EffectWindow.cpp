@@ -56,18 +56,10 @@ EffectWindow::~EffectWindow()
     Hide();
 }
 
-// Accept either callback name
-void EffectWindow::OnFrameReady(ComPtr<ID3D11Texture2D> fullFrameTexture)
+// ISubscriber implementation. This is now a no-op because the DuplicationThread
+// calls Render() directly, but it's required to satisfy the interface.
+void EffectWindow::OnFrameReady(ComPtr<ID3D11Texture2D>)
 {
-    {
-        std::lock_guard<std::mutex> lk(m_textureMutex);
-        m_sharedTexture = fullFrameTexture;
-    }
-    m_textureCv.notify_all();
-}
-void EffectWindow::OnFrame(ComPtr<ID3D11Texture2D> fullFrameTexture)
-{
-    OnFrameReady(fullFrameTexture);
 }
 
 void EffectWindow::Show()
@@ -113,33 +105,13 @@ void EffectWindow::Show()
         winvert4::Log("EW: subscribed to duplication thread");
     }
 
-    // 3) Wait for first frame (up to 750ms)
-    {
-        using namespace std::chrono_literals;
-        std::unique_lock<std::mutex> lk(m_textureMutex);
-        bool ok = m_textureCv.wait_for(lk, 750ms, [this] { return m_sharedTexture != nullptr; });
-        if (ok) {
-            m_lastTexture = m_sharedTexture;
-            m_sharedTexture.Reset();
-            winvert4::Log("EW: first frame received BEFORE window creation");
-        } else {
-            winvert4::Log("EW: first frame NOT ready within 750ms; proceeding");
-        }
-    }
-
-    // 4) Start render thread. It will create the window and pipeline.
-    m_run = true;
-    m_renderThread = std::thread(&EffectWindow::RenderThreadProc, this);
-    winvert4::Log("EW: RenderThread start");
+    // 3) Create the window and pipeline now.
+    CreateAndShow();
 }
 
 void EffectWindow::Hide()
 {
-    if (m_run.exchange(false)) {
-        if (m_renderThread.joinable()) m_renderThread.join();
-    }
-    m_srv.Reset();
-    m_samp.Reset();
+    m_run = false;
     m_cb.Reset();
     m_vb.Reset();
     m_il.Reset();
@@ -152,6 +124,10 @@ void EffectWindow::Hide()
     m_immediateCtx.Reset();
     m_d3d.Reset();
 
+    // Unsubscribe
+    if (m_thread) m_thread->RemoveSubscriber(this);
+
+    // Destroy window
     if (m_hwnd) { DestroyWindow(m_hwnd); m_hwnd = nullptr; }
 }
 
@@ -192,7 +168,7 @@ void EffectWindow::UpdateCBForRegion_()
     winvert4::Logf("EW: CB scale=(%.3f,%.3f) offset=(%.3f,%.3f)", cb.scale[0], cb.scale[1], cb.offset[0], cb.offset[1]);
 }
 
-void EffectWindow::RenderThreadProc()
+void EffectWindow::CreateAndShow()
 {
     // 1) Create window and pipeline objects on this thread
     static ATOM s_atom = 0;
@@ -209,7 +185,7 @@ void EffectWindow::RenderThreadProc()
     const int w = m_desktopRect.right - m_desktopRect.left;
     const int h = m_desktopRect.bottom - m_desktopRect.top;
     m_hwnd = CreateWindowExW(
-        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE,
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE, // Using WS_EX_LAYERED for click-through
         kEffectWndClass, L"", WS_POPUP,
         m_desktopRect.left, m_desktopRect.top, w, h,
         nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
@@ -296,96 +272,74 @@ void EffectWindow::RenderThreadProc()
 
     ShowWindow(m_hwnd, SW_SHOWNOACTIVATE);
 
-    // Also run a message loop on this thread to keep the window responsive.
-    MSG msg{};
+    m_run = true;
+}
 
-    while (m_run) {
-        // Process window messages
-        if (PeekMessageW(&msg, m_hwnd, 0, 0, PM_REMOVE)) {
-            TranslateMessage(&msg);
-            DispatchMessageW(&msg);
-        }
+void EffectWindow::Render(ID3D11Texture2D* frame)
+{
+    if (!m_run || !frame || !m_swapChain) return;
 
-        // Wait for a frame (or reuse last)
-        ComPtr<ID3D11Texture2D> tex;
-        {
-            using namespace std::chrono_literals;
-            std::unique_lock<std::mutex> lk(m_textureMutex);
-            m_textureCv.wait_for(lk, 33ms, [this] { return !m_run || m_sharedTexture != nullptr; });
-            if (!m_run) break;
+    // Ensure SRV reflects current texture
+    EnsureSRVLocked_(frame);
+    if (!m_srv) { return; }
 
-            if (m_sharedTexture) {
-                tex = m_sharedTexture;
-                m_lastTexture = m_sharedTexture;
-                m_sharedTexture.Reset();
-            } else {
-                tex = m_lastTexture;
-            }
-        }
-
-        if (!tex || !m_swapChain) {
-            continue;
-        }
-
-        // Ensure SRV reflects current texture
-        EnsureSRVLocked_(tex.Get());
-        if (!m_srv) { continue; }
-
-        // Recreate RTV each frame (resize-robust)
-        backBuf.Reset();
-        if (FAILED(m_swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuf)))) {
-            m_swapChain->Present(1, 0);
-            continue;
-        }
-        ComPtr<ID3D11RenderTargetView> localRTV;
-        m_d3d->CreateRenderTargetView(backBuf.Get(), nullptr, &localRTV);
-
-        // Bind pipeline
-        UINT stride = sizeof(float) * 2, offset = 0;
-        ID3D11Buffer* vb = m_vb.Get();
-        m_deferredCtx->IASetVertexBuffers(0, 1, &vb, &stride, &offset);
-        m_deferredCtx->IASetInputLayout(m_il.Get());
-        m_deferredCtx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-        // Set viewport to window size to be explicit
-        D3D11_VIEWPORT vp{};
-        vp.TopLeftX = 0.0f; vp.TopLeftY = 0.0f;
-        vp.Width = static_cast<FLOAT>(m_desktopRect.right - m_desktopRect.left);
-        vp.Height = static_cast<FLOAT>(m_desktopRect.bottom - m_desktopRect.top);
-        vp.MinDepth = 0.0f; vp.MaxDepth = 1.0f;
-        m_deferredCtx->RSSetViewports(1, &vp);
-
-        m_deferredCtx->VSSetShader(m_vs.Get(), nullptr, 0);
-        ID3D11Buffer* cb = m_cb.Get();
-        m_deferredCtx->VSSetConstantBuffers(0, 1, &cb);
-
-        m_deferredCtx->PSSetShader(m_ps.Get(), nullptr, 0);
-        ID3D11SamplerState* ss = m_samp.Get();
-        m_deferredCtx->PSSetSamplers(0, 1, &ss);
-        ID3D11ShaderResourceView* srv = m_srv.Get();
-        m_deferredCtx->PSSetShaderResources(0, 1, &srv);
-
-        ID3D11RenderTargetView* rtv = localRTV.Get();
-        m_deferredCtx->OMSetRenderTargets(1, &rtv, nullptr);
-
-        // Update constants & draw (invert handled in pixel shader)
-        UpdateCBForRegion_();
-
-        const float clear[4] = { 0,0,0,0 };
-        m_deferredCtx->ClearRenderTargetView(localRTV.Get(), clear);
-        m_deferredCtx->Draw(3, 0);
-
-        // Unbind SRV to avoid hazards if source updates immediately
-        ID3D11ShaderResourceView* nullSRV[1] = { nullptr };
-        m_deferredCtx->PSSetShaderResources(0, 1, nullSRV);
-
-        // Execute commands on the immediate context
-        ComPtr<ID3D11CommandList> commandList;
-        if (SUCCEEDED(m_deferredCtx->FinishCommandList(FALSE, &commandList))) {
-            std::lock_guard<std::mutex> lock(m_thread->GetContextMutex());
-            m_immediateCtx->ExecuteCommandList(commandList.Get(), FALSE);
-        }
-
+    // Recreate RTV each frame (resize-robust)
+    ComPtr<ID3D11Texture2D> backBuf;
+    if (FAILED(m_swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuf)))) {
         m_swapChain->Present(1, 0);
+        return;
     }
+    ComPtr<ID3D11RenderTargetView> localRTV;
+    m_d3d->CreateRenderTargetView(backBuf.Get(), nullptr, &localRTV);
+
+    // Use the deferred context to build commands
+    m_deferredCtx->ClearState();
+
+    // Bind pipeline
+    UINT stride = sizeof(float) * 2, offset = 0;
+    ID3D11Buffer* vb = m_vb.Get();
+    m_deferredCtx->IASetVertexBuffers(0, 1, &vb, &stride, &offset);
+    m_deferredCtx->IASetInputLayout(m_il.Get());
+    m_deferredCtx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+    // Set viewport to window size to be explicit
+    D3D11_VIEWPORT vp{};
+    vp.TopLeftX = 0.0f; vp.TopLeftY = 0.0f;
+    vp.Width = static_cast<FLOAT>(m_desktopRect.right - m_desktopRect.left);
+    vp.Height = static_cast<FLOAT>(m_desktopRect.bottom - m_desktopRect.top);
+    vp.MinDepth = 0.0f; vp.MaxDepth = 1.0f;
+    m_deferredCtx->RSSetViewports(1, &vp);
+
+    m_deferredCtx->VSSetShader(m_vs.Get(), nullptr, 0);
+    ID3D11Buffer* cb = m_cb.Get();
+    m_deferredCtx->VSSetConstantBuffers(0, 1, &cb);
+
+    m_deferredCtx->PSSetShader(m_ps.Get(), nullptr, 0);
+    ID3D11SamplerState* ss = m_samp.Get();
+    m_deferredCtx->PSSetSamplers(0, 1, &ss);
+    ID3D11ShaderResourceView* srv = m_srv.Get();
+    m_deferredCtx->PSSetShaderResources(0, 1, &srv);
+
+    ID3D11RenderTargetView* rtv = localRTV.Get();
+    m_deferredCtx->OMSetRenderTargets(1, &rtv, nullptr);
+
+    // Update constants & draw (invert handled in pixel shader)
+    UpdateCBForRegion_();
+
+    const float clear[4] = { 0,0,0,0 };
+    m_deferredCtx->ClearRenderTargetView(localRTV.Get(), clear);
+    m_deferredCtx->Draw(3, 0);
+
+    // Unbind SRV to avoid hazards if source updates immediately
+    ID3D11ShaderResourceView* nullSRV[1] = { nullptr };
+    m_deferredCtx->PSSetShaderResources(0, 1, nullSRV);
+
+    // Execute commands on the immediate context
+    ComPtr<ID3D11CommandList> commandList;
+    if (SUCCEEDED(m_deferredCtx->FinishCommandList(FALSE, &commandList))) {
+        // No lock needed, as this is called from the DuplicationThread's loop
+        m_immediateCtx->ExecuteCommandList(commandList.Get(), FALSE);
+    }
+
+    m_swapChain->Present(1, 0);
 }

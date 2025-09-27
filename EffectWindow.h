@@ -16,17 +16,15 @@ public:
     void Show();
     void Hide();
 
-    // Provide BOTH names to match whatever DuplicationThread calls.
-    // Do NOT mark override to avoid signature mismatches.
-    void OnFrameReady(::Microsoft::WRL::ComPtr<ID3D11Texture2D> fullFrameTexture);
-    void OnFrame     (::Microsoft::WRL::ComPtr<ID3D11Texture2D> fullFrameTexture);
+    // Called by DuplicationThread to render a frame
+    void Render(ID3D11Texture2D* frame);
+
+    // ISubscriber implementation (now a no-op, but required to compile)
+    void OnFrameReady(::Microsoft::WRL::ComPtr<ID3D11Texture2D> texture) override;
 
 private:
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-    void RenderThreadProc();
-    void CreatePipeline();
-    void DestroyPipeline();
+    void CreateAndShow();
 
     void EnsureSRVLocked_(ID3D11Texture2D* currentTex);
     void UpdateCBForRegion_();
@@ -55,15 +53,9 @@ private:
 
     struct CBData { float scale[2]; float offset[2]; };
 
-    // Texture handoff
-    std::mutex m_textureMutex;
-    std::condition_variable m_textureCv;
-    ::Microsoft::WRL::ComPtr<ID3D11Texture2D> m_sharedTexture;
-    ::Microsoft::WRL::ComPtr<ID3D11Texture2D> m_lastTexture;
     ID3D11Texture2D* m_srvSourceRaw{ nullptr }; // track which texture SRV is built from
 
     // Threading
-    std::thread m_renderThread;
     std::atomic<bool> m_run{ false };
 
     // Source duplication thread (not owned)
