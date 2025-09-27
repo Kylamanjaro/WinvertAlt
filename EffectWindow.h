@@ -36,7 +36,8 @@ private:
 
     // Device & DXGI
     ::Microsoft::WRL::ComPtr<ID3D11Device>        m_d3d;
-    ::Microsoft::WRL::ComPtr<ID3D11DeviceContext> m_ctx;
+    ::Microsoft::WRL::ComPtr<ID3D11DeviceContext> m_deferredCtx; // Per-thread deferred context
+    ::Microsoft::WRL::ComPtr<ID3D11DeviceContext> m_immediateCtx; // Shared immediate context
     ::Microsoft::WRL::ComPtr<IDXGIFactory2>       m_factory;
     ::Microsoft::WRL::ComPtr<IDXGISwapChain1>     m_swapChain;
 
