@@ -13,6 +13,7 @@ namespace {
 
     static const float kFSVerts[6] = { -1.f,-1.f,  -1.f,3.f,  3.f,-1.f };
 
+    // Vertex shader: pass UV with scale/offset
     static const char* kVS = R"(
         struct VSIn  { float2 pos : POSITION; };
         struct VSOut { float4 pos : SV_Position; float2 uv : TEXCOORD0; };
@@ -23,12 +24,15 @@ namespace {
           o.uv = suv*scale + offset; return o;
         })";
 
+    // Pixel shader: sample and invert RGB; force alpha 1 for opaque overlay
     static const char* kPS = R"(
         Texture2D srcTex : register(t0);
         SamplerState samp0 : register(s0);
         struct PSIn { float4 pos:SV_Position; float2 uv:TEXCOORD0; };
         float4 main(PSIn i) : SV_Target {
-          return srcTex.Sample(samp0, i.uv);
+          float4 c = srcTex.Sample(samp0, i.uv);
+          float3 inv = 1.0 - c.rgb;
+          return float4(inv, 1.0);
         })";
 }
 
@@ -79,7 +83,6 @@ void EffectWindow::Show()
     m_d3d->GetImmediateContext(&m_ctx);
     if (!m_ctx) { winvert4::Log("EW.Show: GetImmediateContext null"); return; }
 
-    
     // Ensure multithread protection (same immediate context as duplication thread)
     {
         Microsoft::WRL::ComPtr<ID3D11Multithread> mt;
@@ -88,7 +91,8 @@ void EffectWindow::Show()
             winvert4::Log("EW.Show: ID3D11Multithread protection ENABLED on immediate context");
         }
     }
-// 2) === SUBSCRIBE FIRST ===
+
+    // 2) Subscribe BEFORE any window exists
     {
         Subscription sub;
         sub.Subscriber = this;
@@ -134,32 +138,7 @@ void EffectWindow::Show()
     winvert4::Logf("EW: created HWND=%p size=(%dx%d)", (void*)m_hwnd, w, h);
 
     // 5) Pipeline
-    CreatePipeline();
-    if (!m_swapChain) { DestroyPipeline(); return; }
-
-    // 6) Safe to exclude now
-    SetWindowDisplayAffinity(m_hwnd, WDA_EXCLUDEFROMCAPTURE);
-    //{ BOOL exclude = TRUE; DwmSetWindowAttribute(m_hwnd, DWMWA_EXCLUDED_FROM_CAPTURE, &exclude, sizeof(exclude)); }
-
-    ShowWindow(m_hwnd, SW_SHOWNOACTIVATE);
-
-    // 7) Start render thread last
-    m_run = true;
-    m_renderThread = std::thread(&EffectWindow::RenderThreadProc, this);
-    winvert4::Log("EW: RenderThread start");
-}
-
-void EffectWindow::Hide()
-{
-    if (m_run.exchange(false)) {
-        if (m_renderThread.joinable()) m_renderThread.join();
-    }
-    DestroyPipeline();
-    if (m_hwnd) { DestroyWindow(m_hwnd); m_hwnd = nullptr; }
-}
-
-void EffectWindow::CreatePipeline()
-{
+    // Factory
     ComPtr<IDXGIDevice> dxgiDevice;
     if (FAILED(m_d3d.As(&dxgiDevice))) return;
     ComPtr<IDXGIAdapter> dxgiAdapter;
@@ -167,8 +146,8 @@ void EffectWindow::CreatePipeline()
     if (FAILED(dxgiAdapter->GetParent(IID_PPV_ARGS(&m_factory)))) return;
 
     DXGI_SWAP_CHAIN_DESC1 sd{};
-    sd.Width = m_desktopRect.right - m_desktopRect.left;
-    sd.Height = m_desktopRect.bottom - m_desktopRect.top;
+    sd.Width = w;
+    sd.Height = h;
     sd.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
     sd.SampleDesc.Count = 1;
     sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
@@ -218,10 +197,24 @@ void EffectWindow::CreatePipeline()
     if (SUCCEEDED(m_swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuf)))) {
         m_d3d->CreateRenderTargetView(backBuf.Get(), nullptr, &m_rtv);
     }
+
+    // 6) Exclude from capture (you mentioned you need this)
+    SetWindowDisplayAffinity(m_hwnd, WDA_EXCLUDEFROMCAPTURE);
+    { BOOL exclude = TRUE; DwmSetWindowAttribute(m_hwnd, DWMWA_EXCLUDED_FROM_CAPTURE, &exclude, sizeof(exclude)); }
+
+    ShowWindow(m_hwnd, SW_SHOWNOACTIVATE);
+
+    // 7) Start render thread last
+    m_run = true;
+    m_renderThread = std::thread(&EffectWindow::RenderThreadProc, this);
+    winvert4::Log("EW: RenderThread start");
 }
 
-void EffectWindow::DestroyPipeline()
+void EffectWindow::Hide()
 {
+    if (m_run.exchange(false)) {
+        if (m_renderThread.joinable()) m_renderThread.join();
+    }
     m_srv.Reset();
     m_samp.Reset();
     m_cb.Reset();
@@ -234,14 +227,14 @@ void EffectWindow::DestroyPipeline()
     m_factory.Reset();
     m_ctx.Reset();
     m_d3d.Reset();
-    m_srvSourceRaw = nullptr;
+
+    if (m_hwnd) { DestroyWindow(m_hwnd); m_hwnd = nullptr; }
 }
 
 void EffectWindow::EnsureSRVLocked_(ID3D11Texture2D* currentTex)
 {
     if (!currentTex) return;
 
-    // Recreate SRV if missing or if bound to a different underlying texture
     if (!m_srv || m_srvSourceRaw != currentTex) {
         m_srv.Reset();
         HRESULT hr = m_d3d->CreateShaderResourceView(currentTex, nullptr, &m_srv);
@@ -301,10 +294,7 @@ void EffectWindow::RenderThreadProc()
 
         // 2) Ensure SRV reflects current texture
         EnsureSRVLocked_(tex.Get());
-        if (!m_srv) {
-            winvert4::Log("EW: SRV is null; skipping draw");
-            continue;
-        }
+        if (!m_srv) { continue; }
 
         // 3) Recreate RTV each frame (resize-robust)
         ComPtr<ID3D11Texture2D> backBuf;
@@ -322,6 +312,14 @@ void EffectWindow::RenderThreadProc()
         m_ctx->IASetInputLayout(m_il.Get());
         m_ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
+        // Set viewport to window size to be explicit
+        D3D11_VIEWPORT vp{};
+        vp.TopLeftX = 0.0f; vp.TopLeftY = 0.0f;
+        vp.Width = static_cast<FLOAT>(m_desktopRect.right - m_desktopRect.left);
+        vp.Height = static_cast<FLOAT>(m_desktopRect.bottom - m_desktopRect.top);
+        vp.MinDepth = 0.0f; vp.MaxDepth = 1.0f;
+        m_ctx->RSSetViewports(1, &vp);
+
         m_ctx->VSSetShader(m_vs.Get(), nullptr, 0);
         ID3D11Buffer* cb = m_cb.Get();
         m_ctx->VSSetConstantBuffers(0, 1, &cb);
@@ -335,24 +333,14 @@ void EffectWindow::RenderThreadProc()
         ID3D11RenderTargetView* rtv = localRTV.Get();
         m_ctx->OMSetRenderTargets(1, &rtv, nullptr);
 
-        // NEW: ensure viewport is set
-        D3D11_VIEWPORT vp{};
-        vp.TopLeftX = 0.0f;
-        vp.TopLeftY = 0.0f;
-        vp.Width    = static_cast<FLOAT>(m_desktopRect.right - m_desktopRect.left);
-        vp.Height   = static_cast<FLOAT>(m_desktopRect.bottom - m_desktopRect.top);
-        vp.MinDepth = 0.0f;
-        vp.MaxDepth = 1.0f;
-        m_ctx->RSSetViewports(1, &vp);
-        
-        // 5) Update constants & draw
+        // 5) Update constants & draw (invert handled in pixel shader)
         UpdateCBForRegion_();
 
         const float clear[4] = { 0,0,0,0 };
         m_ctx->ClearRenderTargetView(localRTV.Get(), clear);
         m_ctx->Draw(3, 0);
 
-        // Unbind SRV to avoid hazards if source is updated right away
+        // Unbind SRV to avoid hazards if source updates immediately
         ID3D11ShaderResourceView* nullSRV[1] = { nullptr };
         m_ctx->PSSetShaderResources(0, 1, nullSRV);
 

@@ -5,6 +5,7 @@ packages/
 x64/
 WinvertApp/
 .vs/
+.vscode/
 
 # Binary and object files
 *.o
@@ -13,3 +14,4 @@ WinvertApp/
 *.elf
 *.hex
 *.pfx
+*.log
