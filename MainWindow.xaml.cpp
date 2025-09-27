@@ -130,7 +130,22 @@ namespace winrt::Winvert4::implementation
 
     void MainWindow::OnSelectionCompleted(RECT sel)
     {
-        winvert4::Logf("MainWindow: selection completed rect=(%ld,%ld,%ld,%ld)", sel.left, sel.top, sel.right, sel.bottom);
+        // Convert selection into virtual-screen coordinates already done by caller
+
+        // 1) Tear down selection overlay BEFORE starting duplication/effect window
+        if (m_selectionHwnd) {
+            ::DestroyWindow(m_selectionHwnd);
+            m_selectionHwnd = nullptr;
+            winvert4::Log("MainWindow: selection overlay destroyed (pre-dup)");
+        }
+
+        // 2) Give DWM one present interval to composite without the overlay
+        ::Sleep(16);
+
+        winvert4::Logf("MainWindow: selection completed rect=(%ld,%ld,%ld,%ld)",
+                       sel.left, sel.top, sel.right, sel.bottom);
+
+        // 3) Create and show the effect window AFTER overlay is gone
         auto newWindow = std::make_unique<EffectWindow>(sel);
         newWindow->Show();
         m_effectWindows.push_back(std::move(newWindow));
@@ -175,7 +190,6 @@ namespace winrt::Winvert4::implementation
             POINTS pts = MAKEPOINTS(lParam);
             self->m_ptEnd = { pts.x, pts.y };
             InvalidateRect(hwnd, nullptr, TRUE);
-            // optional: high-frequency, avoid spamming
             return 0;
         }
 
@@ -190,6 +204,7 @@ namespace winrt::Winvert4::implementation
 
             RECT sel = self->MakeRectFromPoints(self->m_ptStart, self->m_ptEnd);
 
+            // Adjust from overlay-window coordinates to virtual desktop coords
             sel.left   += self->m_virtualOrigin.x;
             sel.right  += self->m_virtualOrigin.x;
             sel.top    += self->m_virtualOrigin.y;
