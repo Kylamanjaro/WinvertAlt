@@ -55,13 +55,20 @@ private:
     ::Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_srv;
 
     struct VertexCB { float scale[2]; float offset[2]; };
+    static constexpr uint32_t kMaxColorMaps = 64;
     struct PixelCB {
         uint32_t enableInvert;
         uint32_t enableGrayscale;
         uint32_t enableMatrix;
-        float _pad0;
+        uint32_t enableColorMap;
         float colorMat[16];
         float colorOffset[4];
+        uint32_t colorMapCount;
+        float _pad1[3];
+        // Pack src RGB in xyz and tolerance^2 in w
+        float colorMapSrc[kMaxColorMaps][4];
+        // Pack dst RGB in xyz; w unused
+        float colorMapDst[kMaxColorMaps][4];
     };
     ::Microsoft::WRL::ComPtr<ID3D11Buffer> m_pixelCb;
     EffectSettings m_settings{};

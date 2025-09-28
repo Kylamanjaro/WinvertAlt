@@ -182,6 +182,7 @@ namespace winrt::Winvert4::implementation
         void UpdateHotkeyText(winrt::Microsoft::UI::Xaml::Controls::TextBox const& textBox, UINT mod, UINT vk);
         int SelectedTabIndex();
         HWND SelectedWindowHwnd();
+        void ApplyGlobalColorMapsToSettings(EffectSettings& settings);
 
         // --- Icon Sources ---
         winrt::Microsoft::UI::Xaml::Media::ImageSource m_brightnessOnIconSource{ nullptr };

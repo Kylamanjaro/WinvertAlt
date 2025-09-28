@@ -116,7 +116,10 @@ namespace winrt::Winvert4::implementation
         if (idx < static_cast<int>(m_effectWindows.size()))
         {
             if (auto& wnd = m_effectWindows[idx])
+            {
+                ApplyGlobalColorMapsToSettings(s);
                 wnd->UpdateSettings(s);
+            }
         }
     }
 
@@ -130,7 +133,10 @@ namespace winrt::Winvert4::implementation
         if (idx < static_cast<int>(m_effectWindows.size()))
         {
             if (auto& wnd = m_effectWindows[idx])
+            {
+                ApplyGlobalColorMapsToSettings(s);
                 wnd->UpdateSettings(s);
+            }
         }
     }
 
@@ -144,7 +150,10 @@ namespace winrt::Winvert4::implementation
         if (idx < static_cast<int>(m_effectWindows.size()))
         {
             if (auto& wnd = m_effectWindows[idx])
+            {
+                ApplyGlobalColorMapsToSettings(s);
                 wnd->UpdateSettings(s);
+            }
         }
     }
 
@@ -1094,6 +1103,12 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
         return static_cast<int>(RegionsTabView().SelectedIndex());
     }
 
+    void winrt::Winvert4::implementation::MainWindow::ApplyGlobalColorMapsToSettings(EffectSettings& settings)
+    {
+        if (settings.isColorMappingEnabled) settings.colorMaps = m_globalColorMaps;
+        else settings.colorMaps.clear();
+    }
+
     HWND MainWindow::SelectedWindowHwnd()
     {
         int idx = SelectedTabIndex();
@@ -1703,6 +1718,7 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
         {
             if (auto& wnd = m_effectWindows[idx])
             {
+                ApplyGlobalColorMapsToSettings(s);
                 wnd->UpdateSettings(s);
             }
         }
@@ -1775,6 +1791,17 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
             maps[row].dstR = c.R; maps[row].dstG = c.G; maps[row].dstB = c.B;
         }
         RefreshColorMapList();
+        // Push live update if mapping is enabled for the selected window
+        {
+            int idxSel = SelectedTabIndex();
+            if (idxSel >= 0 && idxSel < static_cast<int>(m_windowSettings.size()))
+            {
+                if (m_windowSettings[idxSel].isColorMappingEnabled && idxSel < static_cast<int>(m_effectWindows.size()))
+                {
+                    if (auto& wnd = m_effectWindows[idxSel]) { ApplyGlobalColorMapsToSettings(m_windowSettings[idxSel]); wnd->UpdateSettings(m_windowSettings[idxSel]); }
+                }
+            }
+        }
     }
 
     void winrt::Winvert4::implementation::MainWindow::ColorMapTolerance_ValueChanged(Controls::NumberBox const& sender, Controls::NumberBoxValueChangedEventArgs const& e)
@@ -1782,6 +1809,17 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
         int row = -1; auto tagObj = sender.Tag(); if (tagObj) row = unbox_value<int>(tagObj);
         auto& maps = m_globalColorMaps; if (row < 0 || row >= static_cast<int>(maps.size())) return;
         maps[row].tolerance = static_cast<int>(e.NewValue());
+        // Push live update if mapping is enabled for the selected window
+        {
+            int idxSel = SelectedTabIndex();
+            if (idxSel >= 0 && idxSel < static_cast<int>(m_windowSettings.size()))
+            {
+                if (m_windowSettings[idxSel].isColorMappingEnabled && idxSel < static_cast<int>(m_effectWindows.size()))
+                {
+                    if (auto& wnd = m_effectWindows[idxSel]) { ApplyGlobalColorMapsToSettings(m_windowSettings[idxSel]); wnd->UpdateSettings(m_windowSettings[idxSel]); }
+                }
+            }
+        }
     }
 
     void winrt::Winvert4::implementation::MainWindow::ColorMapRemoveButton_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -1793,6 +1831,17 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
         if (m_selectedColorMapRowIndex == row) { m_selectedColorMapRowIndex = -1; }
         else if (m_selectedColorMapRowIndex > row) { m_selectedColorMapRowIndex--; }
         RefreshColorMapList();
+        // Push live update if mapping is enabled for the selected window
+        {
+            int idxSel = SelectedTabIndex();
+            if (idxSel >= 0 && idxSel < static_cast<int>(m_windowSettings.size()))
+            {
+                if (m_windowSettings[idxSel].isColorMappingEnabled && idxSel < static_cast<int>(m_effectWindows.size()))
+                {
+                    if (auto& wnd = m_effectWindows[idxSel]) { ApplyGlobalColorMapsToSettings(m_windowSettings[idxSel]); wnd->UpdateSettings(m_windowSettings[idxSel]); }
+                }
+            }
+        }
     }
 
     void winrt::Winvert4::implementation::MainWindow::PreviewColorMapButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -1819,3 +1868,4 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
         }
         m_isPreviewActive = true;
     }
+

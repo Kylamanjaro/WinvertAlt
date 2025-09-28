@@ -24,7 +24,7 @@ namespace {
           o.uv = suv*scale + offset; return o;
         })";
 
-    // Pixel shader: sample and invert RGB; force alpha 1 for opaque overlay
+    // Pixel shader: sample and apply effects; force alpha 1 for opaque overlay
     static const char* kPS = R"(
         Texture2D srcTex : register(t0);
         SamplerState samp0 : register(s0);
@@ -32,9 +32,13 @@ namespace {
             uint enableInvert;
             uint enableGrayscale;
             uint enableMatrix;
-            uint _pad0;
+            uint enableColorMap;
             row_major float4x4 colorMat;
             float4   colorOffset;
+            uint colorMapCount;
+            float3 _pad1;
+            float4 colorMapSrc[64];
+            float4 colorMapDst[64];
         };
 
         struct PSIn { float4 pos:SV_Position; float2 uv:TEXCOORD0; };
@@ -46,7 +50,20 @@ namespace {
           if (enableGrayscale) {
               result = dot(result, float3(0.299, 0.587, 0.114));
           }
-          if (enableMatrix != 0) { float4 cr = mul(float4(result,1.0), colorMat); result = cr.rgb + colorOffset.rgb; } return float4(result, 1.0);
+          if (enableMatrix != 0) { float4 cr = mul(float4(result,1.0), colorMat); result = cr.rgb + colorOffset.rgb; }
+          if (enableColorMap != 0 && colorMapCount > 0) {
+              float3 rgb = result;
+              [loop]
+              for (uint i = 0; i < colorMapCount; ++i) {
+                  float3 src = colorMapSrc[i].xyz;
+                  float t2 = colorMapSrc[i].w;
+                  float3 d = rgb - src;
+                  float dist2 = dot(d,d);
+                  if (dist2 <= t2) { rgb = colorMapDst[i].xyz; break; }
+              }
+              result = rgb;
+          }
+          return float4(result, 1.0);
         })";
 }
 
@@ -191,6 +208,7 @@ void EffectWindow::UpdateCBs_()
     pcb.enableInvert     = inv ? 1u : 0u;
     pcb.enableGrayscale  = m_settings.isGrayscaleEffectEnabled ? 1u : 0u;
     pcb.enableMatrix     = m_settings.isCustomEffectActive ? 1u : 0u;
+    pcb.enableColorMap   = (m_settings.isColorMappingEnabled && !m_settings.colorMaps.empty()) ? 1u : 0u;
     if (m_settings.isCustomEffectActive)
     {
         memcpy(pcb.colorMat,    m_settings.colorMat,    sizeof(pcb.colorMat));
@@ -202,6 +220,23 @@ void EffectWindow::UpdateCBs_()
         memset(pcb.colorOffset, 0, sizeof(pcb.colorOffset));
         memcpy(pcb.colorMat, ident, sizeof(ident));
     }
+    // Fill color map list
+    uint32_t count = 0;
+    if (pcb.enableColorMap)
+    {
+        count = static_cast<uint32_t>(std::min<size_t>(m_settings.colorMaps.size(), EffectWindow::kMaxColorMaps));
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            const auto& e = m_settings.colorMaps[i];
+            float sr = e.srcR / 255.0f, sg = e.srcG / 255.0f, sb = e.srcB / 255.0f;
+            float dr = e.dstR / 255.0f, dg = e.dstG / 255.0f, db = e.dstB / 255.0f;
+            float t  = std::max(0, std::min(255, e.tolerance)) / 255.0f;
+            float t2 = t * t;
+            pcb.colorMapSrc[i][0] = sr; pcb.colorMapSrc[i][1] = sg; pcb.colorMapSrc[i][2] = sb; pcb.colorMapSrc[i][3] = t2;
+            pcb.colorMapDst[i][0] = dr; pcb.colorMapDst[i][1] = dg; pcb.colorMapDst[i][2] = db; pcb.colorMapDst[i][3] = 0.0f;
+        }
+    }
+    pcb.colorMapCount = count;
     m_deferredCtx->UpdateSubresource(m_pixelCb.Get(), 0, nullptr, &pcb, 0, 0);
 
     winvert4::Logf("EW: CB scale=(%.3f,%.3f) offset=(%.3f,%.3f)", vcb.scale[0], vcb.scale[1], vcb.offset[0], vcb.offset[1]);
