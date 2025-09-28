@@ -27,6 +27,37 @@ namespace
 
 std::vector<RECT> winrt::Winvert4::implementation::MainWindow::s_monitorRects;
 
+HHOOK winrt::Winvert4::implementation::MainWindow::s_mouseHook = nullptr;
+winrt::Winvert4::implementation::MainWindow* winrt::Winvert4::implementation::MainWindow::s_samplingInstance = nullptr;
+
+LRESULT CALLBACK winrt::Winvert4::implementation::MainWindow::LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam)
+{
+    if (nCode >= 0 && (wParam == WM_LBUTTONDOWN || wParam == WM_LBUTTONUP))
+    {
+        auto p = reinterpret_cast<MSLLHOOKSTRUCT*>(lParam);
+        auto self = MainWindow::s_samplingInstance;
+        if (self)
+        {
+            // Dispatch to UI thread to update XAML safely
+            auto dq = self->DispatcherQueue();
+            POINT pt = p->pt;
+            dq.TryEnqueue([self, pt]() {
+                self->OnColorSampled(pt);
+                if (auto btn = self->ColorMapSampleButton()) { btn.Content(box_value(L"Sample")); btn.IsEnabled(true); }
+            });
+        }
+        if (MainWindow::s_mouseHook)
+        {
+            UnhookWindowsHookEx(MainWindow::s_mouseHook);
+            MainWindow::s_mouseHook = nullptr;
+            MainWindow::s_samplingInstance = nullptr;
+        }
+        // Swallow this click so desktop does not receive it
+        return 1;
+    }
+    return CallNextHookEx(MainWindow::s_mouseHook, nCode, wParam, lParam);
+}
+
 namespace winrt::Winvert4::implementation
 {
     winrt::Winvert4::implementation::MainWindow::MainWindow()
@@ -855,6 +886,17 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
         case WM_LBUTTONDOWN:
         {
             if (!self) break;
+            // If in color sampling mode, sample immediately on click
+            if (self->m_isSamplingColor)
+            {
+                POINTS pts = MAKEPOINTS(lParam);
+                POINT pt{ pts.x, pts.y };
+                self->OnColorSampled(pt);
+                self->m_isSelecting = false;
+                self->m_isSamplingColor = false;
+                DestroyWindow(hwnd);
+                return 0;
+            }
             self->m_isDragging = true;
 
             POINTS pts = MAKEPOINTS(lParam);
@@ -909,6 +951,11 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
                     self->m_isDragging = false;
                     self->m_isSelecting = false;
                     self->m_pendingEffect = PendingEffect::None;
+                    if (self->m_isSamplingColor)
+                    {
+                        self->m_isSamplingColor = false;
+                        if (auto btn = self->ColorMapSampleButton()) { btn.Content(box_value(L"Sample")); btn.IsEnabled(true); }
+                    }
                 }
                 DestroyWindow(hwnd);
                 winvert4::Log("MainWindow: selection cancelled via ESC");
@@ -1107,6 +1154,58 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
     {
         if (settings.isColorMappingEnabled) settings.colorMaps = m_globalColorMaps;
         else settings.colorMaps.clear();
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::StartColorSample()
+    {
+        if (m_isSelecting) return;
+        m_isSamplingColor = true;
+        if (auto btn = ColorMapSampleButton()) { btn.Content(box_value(L"Sampling...")); btn.IsEnabled(false); }
+        // Install a low-level mouse hook to capture the next click and swallow it
+        s_samplingInstance = this;
+        s_mouseHook = SetWindowsHookExW(WH_MOUSE_LL, &MainWindow::LowLevelMouseProc, GetModuleHandleW(nullptr), 0);
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::OnColorSampled(POINT ptScreen)
+    {
+        HDC hdc = GetDC(nullptr);
+        if (!hdc)
+        {
+            m_isSamplingColor = false;
+            if (auto btn = ColorMapSampleButton()) { btn.Content(box_value(L"Sample")); btn.IsEnabled(true); }
+            return;
+        }
+        COLORREF cr = GetPixel(hdc, ptScreen.x, ptScreen.y);
+        ReleaseDC(nullptr, hdc);
+        if (cr == CLR_INVALID)
+        {
+            m_isSamplingColor = false;
+            if (auto btn = ColorMapSampleButton()) { btn.Content(box_value(L"Sample")); btn.IsEnabled(true); }
+            return;
+        }
+        ColorMapEntry e{};
+        e.srcR = GetRValue(cr); e.srcG = GetGValue(cr); e.srcB = GetBValue(cr);
+        // Destination from current picker if present
+        if (auto root = this->Content().try_as<FrameworkElement>())
+        {
+            if (auto picker = root.FindName(L"ColorMapPicker").try_as<Controls::ColorPicker>())
+            {
+                auto c = picker.Color();
+                e.dstR = c.R; e.dstG = c.G; e.dstB = c.B;
+            }
+        }
+        m_globalColorMaps.push_back(e);
+        RefreshColorMapList();
+        int idxSel = SelectedTabIndex();
+        if (idxSel >= 0 && idxSel < static_cast<int>(m_windowSettings.size()))
+        {
+            if (m_windowSettings[idxSel].isColorMappingEnabled && idxSel < static_cast<int>(m_effectWindows.size()))
+            {
+                if (auto& wnd = m_effectWindows[idxSel]) { ApplyGlobalColorMapsToSettings(m_windowSettings[idxSel]); wnd->UpdateSettings(m_windowSettings[idxSel]); }
+            }
+        }
+        m_isSamplingColor = false;
+        if (auto btn = ColorMapSampleButton()) { btn.Content(box_value(L"Sample")); btn.IsEnabled(true); }
     }
 
     HWND MainWindow::SelectedWindowHwnd()
@@ -1868,4 +1967,14 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
         }
         m_isPreviewActive = true;
     }
+
+    void winrt::Winvert4::implementation::MainWindow::ColorMapSampleButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        if (!m_isSamplingColor)
+        {
+            StartColorSample();
+        }
+    }
+
+
 

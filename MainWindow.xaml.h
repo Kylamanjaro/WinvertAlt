@@ -51,6 +51,7 @@ namespace winrt::Winvert4::implementation
         void ColorMapTolerance_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
         void ColorMapRemoveButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void PreviewColorMapButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void ColorMapSampleButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
 
         void RefreshColorMapList();
 
@@ -85,6 +86,11 @@ namespace winrt::Winvert4::implementation
         void OnPointerReleased(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const&) {}
 
     private:
+        // Global low-level mouse hook for one-shot sampling
+        static HHOOK s_mouseHook;
+        static MainWindow* s_samplingInstance;
+        static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam);
+
         static LRESULT CALLBACK SelectionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
         static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData);
         static LRESULT CALLBACK WindowSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
@@ -199,6 +205,11 @@ namespace winrt::Winvert4::implementation
         bool m_selectedSwatchIsSource{ true };
         // Global color maps applied to all windows when enabled
         std::vector<ColorMapEntry> m_globalColorMaps;
+
+        // --- Color sampling state ---
+        bool m_isSamplingColor{ false };
+        void StartColorSample();
+        void OnColorSampled(POINT ptClient);
     };
 }
 
