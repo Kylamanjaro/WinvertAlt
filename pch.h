@@ -28,6 +28,22 @@
 
 #include <winrt/Microsoft.UI.Xaml.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
+// Optional per-control headers (present in some SDKs)
+#if __has_include(<winrt/Microsoft.UI.Xaml.Controls.NumberBox.h>)
+#include <winrt/Microsoft.UI.Xaml.Controls.NumberBox.h>
+#endif
+#if __has_include(<winrt/Microsoft.UI.Xaml.Controls.ColorPicker.h>)
+#include <winrt/Microsoft.UI.Xaml.Controls.ColorPicker.h>
+#endif
+#if __has_include(<winrt/Microsoft.UI.Xaml.Controls.InfoBar.h>)
+#include <winrt/Microsoft.UI.Xaml.Controls.InfoBar.h>
+#endif
+#if __has_include(<winrt/Microsoft.UI.Xaml.Controls.TabView.h>)
+#include <winrt/Microsoft.UI.Xaml.Controls.TabView.h>
+#endif
+#if __has_include(<winrt/Microsoft.UI.Xaml.Controls.Expander.h>)
+#include <winrt/Microsoft.UI.Xaml.Controls.Expander.h>
+#endif
 #include <winrt/Microsoft.UI.Xaml.Controls.Primitives.h>
 #include <winrt/Microsoft.UI.Xaml.Markup.h>
 #include <winrt/Microsoft.UI.Xaml.Navigation.h>

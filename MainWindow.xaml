@@ -39,6 +39,7 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <Button x:Name="InvertEffectButton" Grid.Column="0" Click="InvertEffect_Click" Width="36" Height="36" Padding="0" ToolTipService.ToolTip="Toggle Invert">
@@ -58,6 +59,10 @@
                 </Button>
                 <Button x:Name="HideAllWindowsButton" Grid.Column="4" Click="HideAllWindows_Click" Width="36" Height="36" Padding="0" ToolTipService.ToolTip="Hide/Show Region">
                     <Image x:Name="HideAllWindowsImage" Width="26" Height="26" IsHitTestVisible="False"/>
+                </Button>
+                <!-- Mapping toggle button -->
+                <Button x:Name="ColorMappingToggleButton" Grid.Column="5" Click="ColorMappingToggle_Click" Width="36" Height="36" Padding="0" ToolTipService.ToolTip="Toggle Color Mapping">
+                    <TextBlock Text="M" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Button>
             </Grid>
 
@@ -172,6 +177,63 @@
                                     </Grid>
                                     <TextBlock x:Name="RebindStatusText"/>
                                 </StackPanel>
+                            </Expander>
+                        </Border>
+
+                        <!-- Color Mapping Card -->
+                        <Border Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="12">
+                            <Expander x:Name="ColorMappingExpander"
+                                      HorizontalAlignment="Stretch"
+                                      HorizontalContentAlignment="Stretch">
+                                <Expander.Header>
+                                    <TextBlock Text="Color mapping" FontWeight="SemiBold"/>
+                                </Expander.Header>
+                                <Grid ColumnSpacing="16" Padding="8,4,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="300"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Left: mapping list -->
+                                    <StackPanel Grid.Column="0" Spacing="8">
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="Define color replacements"/>
+                                            <Button Grid.Column="1" x:Name="ColorMapAddButton" Content="Add" Click="ColorMapAddButton_Click"/>
+                                        </Grid>
+
+                                        <Grid ColumnSpacing="8" Margin="0,4,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="40"/>
+                                                <ColumnDefinition Width="60"/>
+                                                <ColumnDefinition Width="24"/>
+                                                <ColumnDefinition Width="60"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="On" HorizontalAlignment="Center" Opacity="0.7"/>
+                                            <TextBlock Grid.Column="1" Text="From" HorizontalAlignment="Center" Opacity="0.7"/>
+                                            <TextBlock Grid.Column="2" Text="→" HorizontalAlignment="Center" Opacity="0.7"/>
+                                            <TextBlock Grid.Column="3" Text="To" HorizontalAlignment="Center" Opacity="0.7"/>
+                                            <TextBlock Grid.Column="4" Text="Tolerance" Opacity="0.7"/>
+                                            <TextBlock Grid.Column="5" Text=""/>
+                                        </Grid>
+
+                                        <StackPanel x:Name="ColorMapListPanel" Spacing="6"/>
+                                    </StackPanel>
+
+                                    <!-- Right: shared color picker for swatches -->
+                                    <StackPanel Grid.Column="1" Spacing="8">
+                                        <TextBlock Text="Color picker"/>
+                                        <ColorPicker x:Name="ColorMapPicker" ColorSpectrumShape="Ring" IsAlphaEnabled="False" ColorChanged="ColorMapPicker_ColorChanged"/>
+                                        <Button x:Name="PreviewColorMapButton" Content="Preview" Click="PreviewColorMapButton_Click"/>
+                                    </StackPanel>
+                                </Grid>
                             </Expander>
                         </Border>
 

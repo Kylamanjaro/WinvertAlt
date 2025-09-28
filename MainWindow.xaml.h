@@ -41,6 +41,18 @@ namespace winrt::Winvert4::implementation
         void RebindGrayscaleHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void RebindRemoveHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void SelectionColorPicker_ColorChanged(winrt::Microsoft::UI::Xaml::Controls::ColorPicker const&, winrt::Microsoft::UI::Xaml::Controls::ColorChangedEventArgs const&);
+        // Color Mapping
+        void ColorMappingToggle_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void ColorMapAddButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void ColorMapPicker_ColorChanged(winrt::Microsoft::UI::Xaml::Controls::ColorPicker const&, winrt::Microsoft::UI::Xaml::Controls::ColorChangedEventArgs const&);
+        void ColorMapEnable_Toggled(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void ColorMapSourceSwatch_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void ColorMapDestSwatch_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void ColorMapTolerance_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
+        void ColorMapRemoveButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void PreviewColorMapButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+
+        void RefreshColorMapList();
 
         // --- Tab and Flyout Handlers ---
         void InfoBar_Closed(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::InfoBarClosedEventArgs const&);
@@ -180,6 +192,12 @@ namespace winrt::Winvert4::implementation
         winrt::Microsoft::UI::Xaml::Media::ImageSource m_invertOffIconSource{ nullptr };
         winrt::Microsoft::UI::Xaml::Media::ImageSource m_grayscaleOnIconSource{ nullptr };
         winrt::Microsoft::UI::Xaml::Media::ImageSource m_grayscaleOffIconSource{ nullptr };
+
+        // --- Color Mapping UI state ---
+        int m_selectedColorMapRowIndex{ -1 };
+        bool m_selectedSwatchIsSource{ true };
+        // Global color maps applied to all windows when enabled
+        std::vector<ColorMapEntry> m_globalColorMaps;
     };
 }
 

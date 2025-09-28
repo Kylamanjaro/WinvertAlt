@@ -29,7 +29,7 @@ std::vector<RECT> winrt::Winvert4::implementation::MainWindow::s_monitorRects;
 
 namespace winrt::Winvert4::implementation
 {
-    MainWindow::MainWindow()
+    winrt::Winvert4::implementation::MainWindow::MainWindow()
     {
         winvert4::Log("MainWindow: ctor start");
 
@@ -85,7 +85,7 @@ namespace winrt::Winvert4::implementation
         winvert4::Log("MainWindow: ctor end");
     }
 
-    MainWindow::~MainWindow()
+    winrt::Winvert4::implementation::MainWindow::~MainWindow()
     {
         // TODO: Save settings
         RemoveWindowSubclass(m_mainHwnd, &MainWindow::WindowSubclassProc, 1);
@@ -93,16 +93,16 @@ namespace winrt::Winvert4::implementation
     }
 
     int32_t MainWindow::MyProperty() { return 0; }
-    void MainWindow::MyProperty(int32_t) {}
+    void winrt::Winvert4::implementation::MainWindow::MyProperty(int32_t) {}
 
-    void MainWindow::ToggleSnipping()
+    void winrt::Winvert4::implementation::MainWindow::ToggleSnipping()
     {
         winvert4::Log("MainWindow: ToggleSnipping");
         StartScreenSelection();
     }
 
     // --- XAML Event Handlers ---
-    void MainWindow::BrightnessProtection_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+    void winrt::Winvert4::implementation::MainWindow::BrightnessProtection_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         int idx = SelectedTabIndex();
         if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
@@ -120,7 +120,7 @@ namespace winrt::Winvert4::implementation
         }
     }
 
-    void MainWindow::InvertEffect_Click(IInspectable const&, RoutedEventArgs const&)
+    void winrt::Winvert4::implementation::MainWindow::InvertEffect_Click(IInspectable const&, RoutedEventArgs const&)
     {
         int idx = SelectedTabIndex();
         if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return; // NOLINT(bugprone-branch-clone)
@@ -134,7 +134,7 @@ namespace winrt::Winvert4::implementation
         }
     }
 
-    void MainWindow::GrayscaleEffect_Click(IInspectable const&, RoutedEventArgs const&)
+    void winrt::Winvert4::implementation::MainWindow::GrayscaleEffect_Click(IInspectable const&, RoutedEventArgs const&)
     {
         int idx = SelectedTabIndex();
         if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return; // NOLINT(bugprone-branch-clone)
@@ -148,12 +148,12 @@ namespace winrt::Winvert4::implementation
         }
     }
 
-    void MainWindow::AddWindow_Click(IInspectable const&, RoutedEventArgs const&)
+    void winrt::Winvert4::implementation::MainWindow::AddWindow_Click(IInspectable const&, RoutedEventArgs const&)
     {
         StartScreenSelection();
     }
 
-    void MainWindow::RemoveWindow_Click(IInspectable const&, RoutedEventArgs const&)
+    void winrt::Winvert4::implementation::MainWindow::RemoveWindow_Click(IInspectable const&, RoutedEventArgs const&)
     {
         int idx = SelectedTabIndex();
         if (idx < 0) return;
@@ -204,7 +204,7 @@ namespace winrt::Winvert4::implementation
         UpdateUIState();
     }
 
-    void MainWindow::HideAllWindows_Click(IInspectable const&, RoutedEventArgs const&)
+    void winrt::Winvert4::implementation::MainWindow::HideAllWindows_Click(IInspectable const&, RoutedEventArgs const&)
     {
         int idx = SelectedTabIndex();
         if (idx < 0) return;
@@ -216,7 +216,7 @@ namespace winrt::Winvert4::implementation
         UpdateUIState();
     }
 
-    void MainWindow::SettingsButton_Click(IInspectable const&, RoutedEventArgs const&)
+    void winrt::Winvert4::implementation::MainWindow::SettingsButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
         m_wereWindowsHiddenForSettings = m_areWindowsHidden;
         if (!m_areWindowsHidden)
@@ -245,9 +245,10 @@ namespace winrt::Winvert4::implementation
 
         // Default all settings sections to collapsed on entry
         CollapseAllSettingsExpanders();
+        RefreshColorMapList();
     }
 
-    void MainWindow::BackButton_Click(IInspectable const&, RoutedEventArgs const&)
+    void winrt::Winvert4::implementation::MainWindow::BackButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
         if (m_rebindingState != RebindingState::None) {
             m_rebindingState = RebindingState::None;
@@ -307,12 +308,12 @@ namespace winrt::Winvert4::implementation
         //}
     }
 
-    void MainWindow::SettingsPanel_SizeChanged(IInspectable const&, winrt::Microsoft::UI::Xaml::SizeChangedEventArgs const&)
+    void winrt::Winvert4::implementation::MainWindow::SettingsPanel_SizeChanged(IInspectable const&, winrt::Microsoft::UI::Xaml::SizeChangedEventArgs const&)
     {
         UpdateSettingsColumnsForWindowState();
     }
 
-    void MainWindow::UpdateSettingsColumnsForWindowState()
+    void winrt::Winvert4::implementation::MainWindow::UpdateSettingsColumnsForWindowState()
     {
         bool isMax = ::IsZoomed(m_mainHwnd) != 0;
         using winrt::Microsoft::UI::Xaml::GridLengthHelper;
@@ -320,7 +321,7 @@ namespace winrt::Winvert4::implementation
         AboutScroll().Visibility(isMax ? Visibility::Visible : Visibility::Collapsed);
     }
 
-    void MainWindow::CollapseAllSettingsExpanders()
+    void winrt::Winvert4::implementation::MainWindow::CollapseAllSettingsExpanders()
     {
         // Safely collapse any expander if it exists in the tree
         if (auto expander = BrightnessExpander()) expander.IsExpanded(false);
@@ -333,14 +334,14 @@ namespace winrt::Winvert4::implementation
         if (FilterEditorPanel()) FilterEditorPanel().Visibility(Visibility::Collapsed);
     }
 
-void MainWindow::CustomFiltersExpander_Collapsed(IInspectable const&, Microsoft::UI::Xaml::Controls::ExpanderCollapsedEventArgs const&)
+void winrt::Winvert4::implementation::MainWindow::CustomFiltersExpander_Collapsed(IInspectable const&, Microsoft::UI::Xaml::Controls::ExpanderCollapsedEventArgs const&)
 {
     // Hide the editor when the Custom Filters expander collapses
     if (auto panel = FilterEditorPanel()) panel.Visibility(Visibility::Collapsed);
 }
 
 // --- Simple vs Advanced filter mode ---
-void MainWindow::AdvancedMatrixToggle_Toggled(IInspectable const&, RoutedEventArgs const&)
+void winrt::Winvert4::implementation::MainWindow::AdvancedMatrixToggle_Toggled(IInspectable const&, RoutedEventArgs const&)
 {
     bool advanced = AdvancedMatrixToggle().IsOn();
     // Keep the header (with toggle) visible; only hide the sliders panel when advanced
@@ -348,7 +349,7 @@ void MainWindow::AdvancedMatrixToggle_Toggled(IInspectable const&, RoutedEventAr
     if (auto grid = FilterMatrixGrid()) grid.Visibility(advanced ? Visibility::Visible : Visibility::Collapsed);
 }
 
-void MainWindow::ComposeSimpleMatrix(float (&outMat)[16], float (&outOff)[4])
+void winrt::Winvert4::implementation::MainWindow::ComposeSimpleMatrix(float (&outMat)[16], float (&outOff)[4])
 {
     for (int i = 0; i < 16; ++i) outMat[i] = 0.0f;
     outMat[0] = outMat[5] = outMat[10] = outMat[15] = 1.0f;
@@ -385,7 +386,7 @@ void MainWindow::ComposeSimpleMatrix(float (&outMat)[16], float (&outOff)[4])
     outOff[0] += b; outOff[1] += b; outOff[2] += b;
 }
 
-void MainWindow::WriteMatrixToGrid(const float (&mat)[16], const float (&off)[4])
+void winrt::Winvert4::implementation::MainWindow::WriteMatrixToGrid(const float (&mat)[16], const float (&off)[4])
 {
     auto grid = FilterMatrixGrid(); if (!grid) return;
     for (auto child : grid.Children())
@@ -402,7 +403,7 @@ void MainWindow::WriteMatrixToGrid(const float (&mat)[16], const float (&off)[4]
     }
 }
 
-void MainWindow::BrightnessSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
+void winrt::Winvert4::implementation::MainWindow::BrightnessSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
 {
     m_simpleBrightness = static_cast<float>(e.NewValue());
     float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
@@ -421,7 +422,7 @@ void MainWindow::BrightnessSlider_ValueChanged(IInspectable const&, Microsoft::U
         }
     }
 }
-void MainWindow::ContrastSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
+void winrt::Winvert4::implementation::MainWindow::ContrastSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
 {
     m_simpleContrast = static_cast<float>(e.NewValue());
     float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
@@ -440,7 +441,7 @@ void MainWindow::ContrastSlider_ValueChanged(IInspectable const&, Microsoft::UI:
         }
     }
 }
-void MainWindow::SaturationSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
+void winrt::Winvert4::implementation::MainWindow::SaturationSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
 {
     m_simpleSaturation = static_cast<float>(e.NewValue());
     float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
@@ -459,7 +460,7 @@ void MainWindow::SaturationSlider_ValueChanged(IInspectable const&, Microsoft::U
         }
     }
 }
-void MainWindow::TemperatureSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
+void winrt::Winvert4::implementation::MainWindow::TemperatureSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
 {
     m_simpleTemperature = static_cast<float>(e.NewValue());
     float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
@@ -478,7 +479,7 @@ void MainWindow::TemperatureSlider_ValueChanged(IInspectable const&, Microsoft::
         }
     }
 }
-void MainWindow::TintSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
+void winrt::Winvert4::implementation::MainWindow::TintSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
 {
     m_simpleTint = static_cast<float>(e.NewValue());
     float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
@@ -497,7 +498,7 @@ void MainWindow::TintSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xam
         }
     }
 }
-void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs const&)
+void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs const&)
 {
     m_simpleBrightness = 0.0f; m_simpleContrast = 1.0f; m_simpleSaturation = 1.0f; m_simpleTemperature = 0.0f; m_simpleTint = 0.0f;
     if (auto s = BrightnessSlider()) s.Value(m_simpleBrightness);
@@ -509,7 +510,7 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
 }
 
     // --- Settings Handlers ---
-    void MainWindow::BrightnessThresholdNumberBox_ValueChanged(NumberBox const&, NumberBoxValueChangedEventArgs const& args)
+    void winrt::Winvert4::implementation::MainWindow::BrightnessThresholdNumberBox_ValueChanged(NumberBox const&, NumberBoxValueChangedEventArgs const& args)
     {
         m_brightnessThreshold = static_cast<int>(args.NewValue());
         // Apply to all windows that have brightness protection enabled
@@ -527,7 +528,7 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
         }
     }
 
-    void MainWindow::BrightnessDelayNumberBox_ValueChanged(NumberBox const&, NumberBoxValueChangedEventArgs const& args)
+    void winrt::Winvert4::implementation::MainWindow::BrightnessDelayNumberBox_ValueChanged(NumberBox const&, NumberBoxValueChangedEventArgs const& args)
     {
         m_brightnessProtectionDelay = static_cast<int>(args.NewValue());
         // Apply to all windows that have brightness protection enabled
@@ -546,14 +547,14 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
     }
 
 
-    void MainWindow::DownsampleTargetPixelsNumberBox_ValueChanged(NumberBox const&, NumberBoxValueChangedEventArgs const& args)
+    void winrt::Winvert4::implementation::MainWindow::DownsampleTargetPixelsNumberBox_ValueChanged(NumberBox const&, NumberBoxValueChangedEventArgs const& args)
     {
         m_downsampleTargetPixels = static_cast<int>(args.NewValue());
         if (m_downsampleTargetPixels < 16) m_downsampleTargetPixels = 16;
         //SendSettingsToWorker();
     }
 
-    void MainWindow::FpsComboBox_SelectionChanged(IInspectable const&, SelectionChangedEventArgs const&)
+    void winrt::Winvert4::implementation::MainWindow::FpsComboBox_SelectionChanged(IInspectable const&, SelectionChangedEventArgs const&)
     {
         m_fpsSetting = FpsComboBox().SelectedIndex();
         if (!m_isAppInitialized)
@@ -563,7 +564,7 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
         //SendSettingsToWorker();
     }
 
-    void MainWindow::ShowFpsToggle_Toggled(IInspectable const&, RoutedEventArgs const&)
+    void winrt::Winvert4::implementation::MainWindow::ShowFpsToggle_Toggled(IInspectable const&, RoutedEventArgs const&)
     {
         // Sync setting and push to existing windows
         m_showFpsOverlay = ShowFpsToggle().IsOn();
@@ -579,7 +580,7 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
         }
     }
 
-    void MainWindow::RebindInvertHotkeyButton_Click(IInspectable const&, RoutedEventArgs const&)
+    void winrt::Winvert4::implementation::MainWindow::RebindInvertHotkeyButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
         m_rebindingState = RebindingState::Invert;
         RebindStatusText().Text(L"Press key combo for Invert/Add. ESC to cancel.");
@@ -589,7 +590,7 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
         SetFocus(m_mainHwnd);
     }
 
-    void MainWindow::RebindGrayscaleHotkeyButton_Click(IInspectable const&, RoutedEventArgs const&)
+    void winrt::Winvert4::implementation::MainWindow::RebindGrayscaleHotkeyButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
         m_rebindingState = RebindingState::Grayscale;
         RebindStatusText().Text(L"Press key combo for Grayscale/Add. ESC to cancel.");
@@ -599,7 +600,7 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
         SetFocus(m_mainHwnd);
     }
 
-    void MainWindow::RebindRemoveHotkeyButton_Click(IInspectable const&, RoutedEventArgs const&)
+    void winrt::Winvert4::implementation::MainWindow::RebindRemoveHotkeyButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
         m_rebindingState = RebindingState::Remove;
         RebindStatusText().Text(L"Press key combo for Remove Last. ESC to cancel.");
@@ -609,14 +610,14 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
         SetFocus(m_mainHwnd);
     }
 
-    void MainWindow::SelectionColorPicker_ColorChanged(ColorPicker const&, ColorChangedEventArgs const& args)
+    void winrt::Winvert4::implementation::MainWindow::SelectionColorPicker_ColorChanged(ColorPicker const&, ColorChangedEventArgs const& args)
     {
         auto newColor = args.NewColor();
         m_selectionColor = RGB(newColor.R, newColor.G, newColor.B);
     }
 
     // --- Core Logic ---
-    void MainWindow::RegisterAllHotkeys()
+    void winrt::Winvert4::implementation::MainWindow::RegisterAllHotkeys()
     {
         UnregisterHotKey(m_mainHwnd, HOTKEY_INVERT_ID);
         UnregisterHotKey(m_mainHwnd, HOTKEY_GRAYSCALE_ID);
@@ -628,19 +629,19 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
         UpdateAllHotkeyText();
     }
 
-    void MainWindow::OnInvertHotkeyPressed()
+    void winrt::Winvert4::implementation::MainWindow::OnInvertHotkeyPressed()
     {
         m_pendingEffect = PendingEffect::Invert;
         StartScreenSelection();
     }
 
-    void MainWindow::OnGrayscaleHotkeyPressed()
+    void winrt::Winvert4::implementation::MainWindow::OnGrayscaleHotkeyPressed()
     {
         m_pendingEffect = PendingEffect::Grayscale;
         StartScreenSelection();
     }
 
-    void MainWindow::OnRemoveHotkeyPressed()
+    void winrt::Winvert4::implementation::MainWindow::OnRemoveHotkeyPressed()
     {
         // Mark hotkey-triggered removal so we can close app if it was the last window
         m_lastRemovalInitiatedByHotkey = true;
@@ -648,7 +649,7 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
         // TODO: RequestRemoveLastEffectWindow
     }
 
-    void MainWindow::StartScreenSelection()
+    void winrt::Winvert4::implementation::MainWindow::StartScreenSelection()
     {
         if (m_isSelecting) return;
         m_isSelecting = true;
@@ -700,7 +701,7 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
         }
     }
 
-    void MainWindow::CaptureScreenBitmap()
+    void winrt::Winvert4::implementation::MainWindow::CaptureScreenBitmap()
     {
         ReleaseScreenBitmap();
 
@@ -723,7 +724,7 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
         winvert4::Log("MainWindow: captured screen bitmap");
     }
 
-    void MainWindow::EnumerateMonitors()
+    void winrt::Winvert4::implementation::MainWindow::EnumerateMonitors()
     {
         s_monitorRects.clear();
         EnumDisplayMonitors(NULL, NULL, MonitorEnumProc, 0);
@@ -735,7 +736,7 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
         return TRUE;
     }
 
-    void MainWindow::ReleaseScreenBitmap()
+    void winrt::Winvert4::implementation::MainWindow::ReleaseScreenBitmap()
     {
         if (m_screenMemDC)
         {
@@ -762,7 +763,7 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
         return r;
     }
 
-    void MainWindow::OnSelectionCompleted(RECT sel)
+    void winrt::Winvert4::implementation::MainWindow::OnSelectionCompleted(RECT sel)
     {
         // Convert selection into virtual-screen coordinates already done by caller
 
@@ -1021,7 +1022,7 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
 
     // --- UI Helpers from MainWindowAlt ---
 
-    void MainWindow::UpdateUIState()
+    void winrt::Winvert4::implementation::MainWindow::UpdateUIState()
     {
         bool hasWindows = RegionsTabView().TabItems().Size() > 0;
         int idx = SelectedTabIndex();
@@ -1051,7 +1052,7 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
         }
     }
 
-    void MainWindow::SetWindowSize(int width, int height)
+    void winrt::Winvert4::implementation::MainWindow::SetWindowSize(int width, int height)
     {
         auto windowId = winrt::Microsoft::UI::GetWindowIdFromWindow(m_mainHwnd);
         auto appWindow = winrt::Microsoft::UI::Windowing::AppWindow::GetFromWindowId(windowId);
@@ -1063,14 +1064,14 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
         }
     }
 
-    void MainWindow::UpdateAllHotkeyText()
+    void winrt::Winvert4::implementation::MainWindow::UpdateAllHotkeyText()
     {
         if (auto tb = InvertHotkeyTextBox()) UpdateHotkeyText(tb, m_hotkeyInvertMod, m_hotkeyInvertVk);
         if (auto tb = GrayscaleHotkeyTextBox()) UpdateHotkeyText(tb, m_hotkeyGrayscaleMod, m_hotkeyGrayscaleVk);
         if (auto tb = RemoveHotkeyTextBox()) UpdateHotkeyText(tb, m_hotkeyRemoveMod, m_hotkeyRemoveVk);
     }
 
-    void MainWindow::UpdateHotkeyText(TextBox const& textBox, UINT mod, UINT vk)
+    void winrt::Winvert4::implementation::MainWindow::UpdateHotkeyText(TextBox const& textBox, UINT mod, UINT vk)
     {
         std::wstring hotkeyString;
         if (mod & MOD_WIN) hotkeyString += L"Win + ";
@@ -1088,7 +1089,7 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
         textBox.Text(hotkeyString);
     }
 
-    int MainWindow::SelectedTabIndex()
+    int winrt::Winvert4::implementation::MainWindow::SelectedTabIndex()
     {
         return static_cast<int>(RegionsTabView().SelectedIndex());
     }
@@ -1106,7 +1107,7 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
         return reinterpret_cast<HWND>(static_cast<uintptr_t>(tag));
     }
 
-    void MainWindow::FiltersMenuFlyout_Closing(IInspectable const&, Controls::Primitives::FlyoutBaseClosingEventArgs const& e)
+    void winrt::Winvert4::implementation::MainWindow::FiltersMenuFlyout_Closing(IInspectable const&, Controls::Primitives::FlyoutBaseClosingEventArgs const& e)
     {
         if (m_keepFiltersFlyoutOpenNext)
         {
@@ -1115,7 +1116,7 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
         }
     }
 
-    void MainWindow::InfoBar_Closed(IInspectable const&, Microsoft::UI::Xaml::Controls::InfoBarClosedEventArgs const&)
+    void winrt::Winvert4::implementation::MainWindow::InfoBar_Closed(IInspectable const&, Microsoft::UI::Xaml::Controls::InfoBarClosedEventArgs const&)
     {
         if (SettingsPanel().Visibility() != Visibility::Visible)
         {
@@ -1123,12 +1124,12 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
         }
     }
 
-    void MainWindow::RegionsTabView_AddTabButtonClick(IInspectable const&, IInspectable const&)
+    void winrt::Winvert4::implementation::MainWindow::RegionsTabView_AddTabButtonClick(IInspectable const&, IInspectable const&)
     {
         StartScreenSelection();
     }
 
-    void MainWindow::RegionsTabView_TabCloseRequested(TabView const& sender, TabViewTabCloseRequestedEventArgs const& args)
+    void winrt::Winvert4::implementation::MainWindow::RegionsTabView_TabCloseRequested(TabView const& sender, TabViewTabCloseRequestedEventArgs const& args)
     {
         m_lastRemovalViaUI = true;
         m_lastRemovalInitiatedByHotkey = false;
@@ -1171,9 +1172,10 @@ void MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs co
         }
     }
 
-    void MainWindow::RegionsTabView_SelectionChanged(IInspectable const&, Controls::SelectionChangedEventArgs const&)
+    void winrt::Winvert4::implementation::MainWindow::RegionsTabView_SelectionChanged(IInspectable const&, Controls::SelectionChangedEventArgs const&)
     {
         UpdateUIState();
+        RefreshColorMapList();
     }
 
     LRESULT CALLBACK MainWindow::WindowSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
@@ -1591,3 +1593,229 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
 
 
 
+    // --- Color Mapping UI ---
+    void winrt::Winvert4::implementation::MainWindow::RefreshColorMapList()
+    {
+        Controls::StackPanel listPanel{ nullptr };
+        {
+            auto root = this->Content().try_as<FrameworkElement>();
+            if (root) listPanel = root.FindName(L"ColorMapListPanel").try_as<Controls::StackPanel>();
+        }
+        if (!listPanel) return;
+
+        listPanel.Children().Clear();
+
+        auto& maps = m_globalColorMaps;
+
+        for (int i = 0; i < static_cast<int>(maps.size()); ++i)
+        {
+            Controls::Grid rowGrid{};
+            rowGrid.ColumnSpacing(8);
+            auto cols = rowGrid.ColumnDefinitions();
+            cols.Append(Controls::ColumnDefinition());
+            cols.Append(Controls::ColumnDefinition());
+            cols.Append(Controls::ColumnDefinition());
+            cols.Append(Controls::ColumnDefinition());
+            cols.Append(Controls::ColumnDefinition());
+            cols.Append(Controls::ColumnDefinition());
+
+            // Enable checkbox
+            Controls::CheckBox cb{};
+            cb.IsChecked(maps[i].enabled);
+            cb.Tag(box_value(i));
+            cb.VerticalAlignment(VerticalAlignment::Center);
+            cb.Checked([this](auto const& s, auto const& e){ ColorMapEnable_Toggled(s, e); });
+            cb.Unchecked([this](auto const& s, auto const& e){ ColorMapEnable_Toggled(s, e); });
+            Controls::Grid::SetColumn(cb, 0);
+            rowGrid.Children().Append(cb);
+
+            // Src swatch
+            Controls::Button srcBtn{};
+            srcBtn.Width(28); srcBtn.Height(28);
+            srcBtn.HorizontalAlignment(HorizontalAlignment::Stretch);
+            srcBtn.VerticalAlignment(VerticalAlignment::Center);
+            srcBtn.Padding(ThicknessHelper::FromUniformLength(0));
+            srcBtn.BorderThickness(ThicknessHelper::FromUniformLength(1));
+            {
+                winrt::Windows::UI::Color c{}; c.A = 255; c.R = maps[i].srcR; c.G = maps[i].srcG; c.B = maps[i].srcB;
+                Media::SolidColorBrush brush; brush.Color(c);
+                srcBtn.Background(brush);
+            }
+            srcBtn.Tag(box_value(i));
+            srcBtn.Click([this](auto const& s, auto const& e){ ColorMapSourceSwatch_Click(s, e); });
+            Controls::Grid::SetColumn(srcBtn, 1);
+            rowGrid.Children().Append(srcBtn);
+
+            // Arrow
+            Controls::TextBlock arrow{};
+            arrow.Text(L"→");
+            arrow.VerticalAlignment(VerticalAlignment::Center);
+            arrow.HorizontalAlignment(HorizontalAlignment::Center);
+            Controls::Grid::SetColumn(arrow, 2);
+            rowGrid.Children().Append(arrow);
+
+            // Dst swatch
+            Controls::Button dstBtn{};
+            dstBtn.Width(28); dstBtn.Height(28);
+            dstBtn.HorizontalAlignment(HorizontalAlignment::Stretch);
+            dstBtn.VerticalAlignment(VerticalAlignment::Center);
+            dstBtn.Padding(ThicknessHelper::FromUniformLength(0));
+            dstBtn.BorderThickness(ThicknessHelper::FromUniformLength(1));
+            {
+                winrt::Windows::UI::Color c{}; c.A = 255; c.R = maps[i].dstR; c.G = maps[i].dstG; c.B = maps[i].dstB;
+                Media::SolidColorBrush brush; brush.Color(c);
+                dstBtn.Background(brush);
+            }
+            dstBtn.Tag(box_value(i));
+            dstBtn.Click([this](auto const& s, auto const& e){ ColorMapDestSwatch_Click(s, e); });
+            Controls::Grid::SetColumn(dstBtn, 3);
+            rowGrid.Children().Append(dstBtn);
+
+            // Tolerance
+            Controls::NumberBox tol{};
+            tol.Minimum(0); tol.Maximum(255);
+            tol.Value(maps[i].tolerance);
+            tol.SpinButtonPlacementMode(Controls::NumberBoxSpinButtonPlacementMode::Compact);
+            tol.Tag(box_value(i));
+            tol.ValueChanged([this](auto const& s, auto const& e){ ColorMapTolerance_ValueChanged(s, e); });
+            Controls::Grid::SetColumn(tol, 4);
+            rowGrid.Children().Append(tol);
+
+            // Remove
+            Controls::Button rm{};
+            rm.Content(box_value(L"Remove"));
+            rm.Tag(box_value(i));
+            rm.Click([this](auto const& s, auto const& e){ ColorMapRemoveButton_Click(s, e); });
+            Controls::Grid::SetColumn(rm, 5);
+            rowGrid.Children().Append(rm);
+
+            listPanel.Children().Append(rowGrid);
+        }
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::ColorMappingToggle_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        int idx = SelectedTabIndex();
+        if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
+        auto& s = m_windowSettings[idx];
+        s.isColorMappingEnabled = !s.isColorMappingEnabled;
+        if (idx < static_cast<int>(m_effectWindows.size()))
+        {
+            if (auto& wnd = m_effectWindows[idx])
+            {
+                wnd->UpdateSettings(s);
+            }
+        }
+        UpdateUIState();
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::ColorMapAddButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        ColorMapEntry e{};
+        m_globalColorMaps.push_back(e);
+        RefreshColorMapList();
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::ColorMapEnable_Toggled(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        auto cb = sender.try_as<Controls::CheckBox>();
+        if (!cb) return;
+        auto tag = cb.Tag();
+        if (!tag) return;
+        int row = unbox_value<int>(tag);
+        auto& maps = m_globalColorMaps;
+        if (row >= 0 && row < static_cast<int>(maps.size()))
+        {
+            maps[row].enabled = cb.IsChecked().GetBoolean();
+        }
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::ColorMapSourceSwatch_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        auto btn = sender.try_as<Controls::Button>(); if (!btn) return;
+        int row = -1; auto tagObj = btn.Tag(); if (tagObj) row = unbox_value<int>(tagObj);
+        auto& maps = m_globalColorMaps; if (row < 0 || row >= static_cast<int>(maps.size())) return;
+        m_selectedColorMapRowIndex = row; m_selectedSwatchIsSource = true;
+        winrt::Windows::UI::Color c{}; c.A = 255; c.R = maps[row].srcR; c.G = maps[row].srcG; c.B = maps[row].srcB;
+        Controls::ColorPicker picker{ nullptr };
+        {
+            auto root = this->Content().try_as<FrameworkElement>();
+            if (root) picker = root.FindName(L"ColorMapPicker").try_as<Controls::ColorPicker>();
+        }
+        if (picker) picker.Color(c);
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::ColorMapDestSwatch_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        auto btn = sender.try_as<Controls::Button>(); if (!btn) return;
+        int row = -1; auto tagObj = btn.Tag(); if (tagObj) row = unbox_value<int>(tagObj);
+        auto& maps = m_globalColorMaps; if (row < 0 || row >= static_cast<int>(maps.size())) return;
+        m_selectedColorMapRowIndex = row; m_selectedSwatchIsSource = false;
+        winrt::Windows::UI::Color c{}; c.A = 255; c.R = maps[row].dstR; c.G = maps[row].dstG; c.B = maps[row].dstB;
+        Controls::ColorPicker picker{ nullptr };
+        {
+            auto root = this->Content().try_as<FrameworkElement>();
+            if (root) picker = root.FindName(L"ColorMapPicker").try_as<Controls::ColorPicker>();
+        }
+        if (picker) picker.Color(c);
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::ColorMapPicker_ColorChanged(Controls::ColorPicker const&, Controls::ColorChangedEventArgs const& args)
+    {
+        auto& maps = m_globalColorMaps;
+        int row = m_selectedColorMapRowIndex;
+        if (row < 0 || row >= static_cast<int>(maps.size())) return;
+        auto c = args.NewColor();
+        if (m_selectedSwatchIsSource)
+        {
+            maps[row].srcR = c.R; maps[row].srcG = c.G; maps[row].srcB = c.B;
+        }
+        else
+        {
+            maps[row].dstR = c.R; maps[row].dstG = c.G; maps[row].dstB = c.B;
+        }
+        RefreshColorMapList();
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::ColorMapTolerance_ValueChanged(Controls::NumberBox const& sender, Controls::NumberBoxValueChangedEventArgs const& e)
+    {
+        int row = -1; auto tagObj = sender.Tag(); if (tagObj) row = unbox_value<int>(tagObj);
+        auto& maps = m_globalColorMaps; if (row < 0 || row >= static_cast<int>(maps.size())) return;
+        maps[row].tolerance = static_cast<int>(e.NewValue());
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::ColorMapRemoveButton_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        auto btn = sender.try_as<Controls::Button>(); if (!btn) return;
+        int row = -1; auto tagObj = btn.Tag(); if (tagObj) row = unbox_value<int>(tagObj);
+        auto& maps = m_globalColorMaps; if (row < 0 || row >= static_cast<int>(maps.size())) return;
+        maps.erase(maps.begin() + row);
+        if (m_selectedColorMapRowIndex == row) { m_selectedColorMapRowIndex = -1; }
+        else if (m_selectedColorMapRowIndex > row) { m_selectedColorMapRowIndex--; }
+        RefreshColorMapList();
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::PreviewColorMapButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        int idx = SelectedTabIndex();
+        if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
+        if (static_cast<int>(m_hasPreviewBackup.size()) <= idx)
+        {
+            m_hasPreviewBackup.resize(idx + 1, false);
+            m_previewBackup.resize(idx + 1);
+        }
+        if (!m_hasPreviewBackup[idx])
+        {
+            m_previewBackup[idx] = m_windowSettings[idx];
+            m_hasPreviewBackup[idx] = true;
+        }
+        m_windowSettings[idx].isColorMappingEnabled = true;
+        if (idx < static_cast<int>(m_effectWindows.size()))
+        {
+            if (auto& wnd = m_effectWindows[idx])
+            {
+                wnd->UpdateSettings(m_windowSettings[idx]);
+            }
+        }
+        m_isPreviewActive = true;
+    }

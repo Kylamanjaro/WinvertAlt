@@ -1,5 +1,16 @@
 #pragma once
 
+#include <vector>
+
+// A single color mapping entry
+struct ColorMapEntry
+{
+    bool enabled{ true };
+    uint8_t srcR{ 0 }, srcG{ 0 }, srcB{ 0 };
+    uint8_t dstR{ 255 }, dstG{ 255 }, dstB{ 255 };
+    int tolerance{ 16 }; // 0-255 range tolerance
+};
+
 // Defines the settings for a single effect window.
 struct EffectSettings
 {
@@ -26,4 +37,7 @@ struct EffectSettings
 
     // Diagnostics
     bool showFpsOverlay = false;
+
+    // Color mapping toggle per window (mapping list is global in MainWindow)
+    bool isColorMappingEnabled = false;
 };
