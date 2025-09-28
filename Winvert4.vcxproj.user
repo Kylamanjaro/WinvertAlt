@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Source>C:\Users\kbuch\source\repos\Winvert4\Assets\winvert_app_logo_final.pdf</Source>
+    <SmallTileSource>C:\Users\kbuch\source\repos\Winvert4\Assets\winvert_app_logo_final.pdf</SmallTileSource>
+    <MediumTileSource>C:\Users\kbuch\source\repos\Winvert4\Assets\winvert_app_logo_final.pdf</MediumTileSource>
+    <WideTileSource>C:\Users\kbuch\source\repos\Winvert4\Assets\winvert_app_logo_final.pdf</WideTileSource>
+    <LargeTileSource>C:\Users\kbuch\source\repos\Winvert4\Assets\winvert_app_logo_final.pdf</LargeTileSource>
+    <AppIconSource>C:\Users\kbuch\source\repos\Winvert4\Assets\winvert_app_logo_final.pdf</AppIconSource>
+    <SplashScreenSource>C:\Users\kbuch\source\repos\Winvert4\Assets\winvert_app_logo_final.pdf</SplashScreenSource>
+    <PackageLogoSource>C:\Users\kbuch\source\repos\Winvert4\Assets\winvert_app_logo_final.pdf</PackageLogoSource>
+  </PropertyGroup>
+</Project>

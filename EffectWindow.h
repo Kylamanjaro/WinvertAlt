@@ -102,4 +102,12 @@ private:
     int   m_gpuTimerIndex{ 0 };
     double m_gpuMsLast{ 0.0 };
     float  m_procFps{ 0.0f };
+
+    // Brightness protection (GPU-averaged luminance)
+    ::Microsoft::WRL::ComPtr<ID3D11Texture2D>        m_mipTex;          // region-sized, mipped, SRV|RTV, GENERATE_MIPS
+    ::Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_mipSrv;
+    ::Microsoft::WRL::ComPtr<ID3D11Texture2D>        m_mipReadback1x1;  // staging 1x1
+    UINT m_mipLastLevel{ 0 };
+    float m_avgLuma{ 0.0f };
+    bool  m_effectiveInvert{ false };
 };

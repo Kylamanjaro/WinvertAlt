@@ -182,7 +182,8 @@ void EffectWindow::UpdateCBs_()
 
     // Update Pixel Shader CB
     PixelCB pcb{};
-    pcb.enableInvert     = m_settings.isInvertEffectEnabled ? 1u : 0u;
+    bool inv = m_settings.isBrightnessProtectionEnabled ? m_effectiveInvert : m_settings.isInvertEffectEnabled;
+    pcb.enableInvert     = inv ? 1u : 0u;
     pcb.enableGrayscale  = m_settings.isGrayscaleEffectEnabled ? 1u : 0u;
     pcb.enableMatrix     = m_settings.isCustomEffectActive ? 1u : 0u;
     if (m_settings.isCustomEffectActive)
@@ -359,6 +360,41 @@ void EffectWindow::CreateAndShow()
     ShowWindow(m_hwnd, SW_SHOWNOACTIVATE);
 
     m_run = true;
+
+    // Prepare luminance mip resources for brightness protection
+    {
+        const int w = m_desktopRect.right - m_desktopRect.left;
+        const int h = m_desktopRect.bottom - m_desktopRect.top;
+        UINT maxDim = (UINT)(w > h ? w : h);
+        UINT mips = 1; while ((1u << mips) < maxDim) ++mips; // ceil(log2(maxDim))
+        m_mipLastLevel = mips - 1;
+
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = w; td.Height = h; td.MipLevels = mips; td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+        td.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+        m_d3d->CreateTexture2D(&td, nullptr, &m_mipTex);
+        if (m_mipTex)
+        {
+            D3D11_SHADER_RESOURCE_VIEW_DESC sd{};
+            sd.Format = td.Format;
+            sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+            sd.Texture2D.MipLevels = td.MipLevels;
+            m_d3d->CreateShaderResourceView(m_mipTex.Get(), &sd, &m_mipSrv);
+        }
+
+        // 1x1 staging readback
+        D3D11_TEXTURE2D_DESC rd{};
+        rd.Width = 1; rd.Height = 1; rd.MipLevels = 1; rd.ArraySize = 1;
+        rd.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        rd.SampleDesc.Count = 1;
+        rd.Usage = D3D11_USAGE_STAGING;
+        rd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        m_d3d->CreateTexture2D(&rd, nullptr, &m_mipReadback1x1);
+    }
 }
 
 void EffectWindow::Render(ID3D11Texture2D* frame, unsigned long long lastPresentQpc)
@@ -368,6 +404,42 @@ void EffectWindow::Render(ID3D11Texture2D* frame, unsigned long long lastPresent
     // Ensure SRV reflects current texture
     EnsureSRVLocked_(frame);
     if (!m_srv) { return; }
+
+    // Brightness protection: compute average luminance of the region via mipmap reduction
+    if (m_settings.isBrightnessProtectionEnabled && m_mipTex && m_mipSrv && m_mipReadback1x1)
+    {
+        RECT outRect = m_thread->GetOutputRect();
+        D3D11_BOX box{};
+        box.left = (UINT)(m_desktopRect.left - outRect.left);
+        box.top  = (UINT)(m_desktopRect.top  - outRect.top);
+        box.right  = (UINT)(box.left + (m_desktopRect.right - m_desktopRect.left));
+        box.bottom = (UINT)(box.top  + (m_desktopRect.bottom - m_desktopRect.top));
+        box.front = 0; box.back = 1;
+        m_immediateCtx->CopySubresourceRegion(m_mipTex.Get(), 0, 0, 0, 0, frame, 0, &box);
+        m_immediateCtx->GenerateMips(m_mipSrv.Get());
+
+        // Copy last mip to 1x1 staging and read CPU-side
+        m_immediateCtx->CopySubresourceRegion(m_mipReadback1x1.Get(), 0, 0, 0, 0, m_mipTex.Get(), m_mipLastLevel, nullptr);
+        D3D11_MAPPED_SUBRESOURCE map{};
+        if (SUCCEEDED(m_immediateCtx->Map(m_mipReadback1x1.Get(), 0, D3D11_MAP_READ, 0, &map)))
+        {
+            const uint8_t* px = static_cast<const uint8_t*>(map.pData);
+            float b = px[0] / 255.0f; float g = px[1] / 255.0f; float r = px[2] / 255.0f;
+            // Match luma weights used elsewhere
+            m_avgLuma = r * 0.299f + g * 0.587f + b * 0.114f;
+            m_immediateCtx->Unmap(m_mipReadback1x1.Get(), 0);
+
+            // Choose effective invert to minimize luminance w.r.t threshold
+            float thr = (m_settings.brightnessThreshold / 255.0f);
+            // If above threshold, prefer inverted; else prefer original
+            bool invertPref = (m_avgLuma > thr);
+            m_effectiveInvert = invertPref;
+        }
+    }
+    else
+    {
+        m_effectiveInvert = m_settings.isInvertEffectEnabled;
+    }
 
     // Recreate RTV each frame (resize-robust)
     ComPtr<ID3D11Texture2D> backBuf;

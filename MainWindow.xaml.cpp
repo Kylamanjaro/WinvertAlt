@@ -106,9 +106,18 @@ namespace winrt::Winvert4::implementation
     {
         int idx = SelectedTabIndex();
         if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
-        m_windowSettings[idx].isBrightnessProtectionEnabled = !m_windowSettings[idx].isBrightnessProtectionEnabled;
+        auto& s = m_windowSettings[idx];
+        s.isBrightnessProtectionEnabled = !s.isBrightnessProtectionEnabled;
+        // Sync current global brightness settings into this window
+        s.brightnessThreshold = m_brightnessThreshold;
+        s.brightnessProtectionDelay = m_brightnessProtectionDelay;
         UpdateUIState();
-        //SendSelectedWindowSettings();
+        // Push to the active effect window immediately so it takes effect without needing another toggle
+        if (idx < static_cast<int>(m_effectWindows.size()))
+        {
+            if (auto& wnd = m_effectWindows[idx])
+                wnd->UpdateSettings(s);
+        }
     }
 
     void MainWindow::InvertEffect_Click(IInspectable const&, RoutedEventArgs const&)
@@ -334,13 +343,37 @@ namespace winrt::Winvert4::implementation
     void MainWindow::BrightnessThresholdNumberBox_ValueChanged(NumberBox const&, NumberBoxValueChangedEventArgs const& args)
     {
         m_brightnessThreshold = static_cast<int>(args.NewValue());
-        //SendSettingsToWorker();
+        // Apply to all windows that have brightness protection enabled
+        for (size_t i = 0; i < m_windowSettings.size(); ++i)
+        {
+            if (m_windowSettings[i].isBrightnessProtectionEnabled)
+            {
+                m_windowSettings[i].brightnessThreshold = m_brightnessThreshold;
+                if (i < m_effectWindows.size())
+                {
+                    if (auto& wnd = m_effectWindows[i])
+                        wnd->UpdateSettings(m_windowSettings[i]);
+                }
+            }
+        }
     }
 
     void MainWindow::BrightnessDelayNumberBox_ValueChanged(NumberBox const&, NumberBoxValueChangedEventArgs const& args)
     {
         m_brightnessProtectionDelay = static_cast<int>(args.NewValue());
-        //SendSettingsToWorker();
+        // Apply to all windows that have brightness protection enabled
+        for (size_t i = 0; i < m_windowSettings.size(); ++i)
+        {
+            if (m_windowSettings[i].isBrightnessProtectionEnabled)
+            {
+                m_windowSettings[i].brightnessProtectionDelay = m_brightnessProtectionDelay;
+                if (i < m_effectWindows.size())
+                {
+                    if (auto& wnd = m_effectWindows[i])
+                        wnd->UpdateSettings(m_windowSettings[i]);
+                }
+            }
+        }
     }
 
 
@@ -588,6 +621,8 @@ namespace winrt::Winvert4::implementation
             settings.isGrayscaleEffectEnabled = true;
         }
         settings.showFpsOverlay = m_showFpsOverlay;
+        settings.brightnessThreshold = m_brightnessThreshold;
+        settings.brightnessProtectionDelay = m_brightnessProtectionDelay;
         m_windowSettings.push_back(settings);
         m_pendingEffect = PendingEffect::None; // Reset for next time
 
@@ -1342,4 +1377,5 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterButton_Click(winr
     }
     m_isPreviewActive = true;
 }
+
 
