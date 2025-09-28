@@ -269,7 +269,7 @@ void DuplicationThread::ThreadProc()
             for (auto& s : subsCopy) {
                 if (s.Subscriber) {
                     // Cast and call the new Render method
-                    static_cast<EffectWindow*>(s.Subscriber)->Render(m_fullTexture.Get());
+                    static_cast<EffectWindow*>(s.Subscriber)->Render(m_fullTexture.Get(), fi.LastPresentTime.QuadPart);
                 }
             }
         }

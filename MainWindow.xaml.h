@@ -54,6 +54,7 @@ namespace winrt::Winvert4::implementation
         void SaveFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void DeleteFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void ClearFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void PreviewFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void SavedFiltersComboBox_SelectionChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
         void FilterMenuItem_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
 
@@ -132,6 +133,17 @@ namespace winrt::Winvert4::implementation
         // --- Per-window state ---
         std::vector<EffectSettings> m_windowSettings;
         std::vector<bool> m_windowHidden;
+
+        // --- Saved Filters ---
+        struct SavedFilter { std::wstring name; float mat[16]; float offset[4]; };
+        std::vector<SavedFilter> m_savedFilters;
+        void UpdateFilterDropdown();
+        void UpdateSavedFiltersCombo();
+
+        // --- Preview state (temporary apply while on settings page) ---
+        bool m_isPreviewActive{ false };
+        std::vector<bool> m_hasPreviewBackup;
+        std::vector<EffectSettings> m_previewBackup;
 
         // --- UI Helpers ---
         void UpdateUIState();

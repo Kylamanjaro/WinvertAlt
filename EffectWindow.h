@@ -20,7 +20,7 @@ public:
     void UpdateSettings(const EffectSettings& settings);
 
     // Called by DuplicationThread to render a frame
-    void Render(ID3D11Texture2D* frame);
+    void Render(ID3D11Texture2D* frame, unsigned long long lastPresentQpc);
 
     // ISubscriber implementation (now a no-op, but required to compile)
     void OnFrameReady(::Microsoft::WRL::ComPtr<ID3D11Texture2D> texture) override;
@@ -58,7 +58,10 @@ private:
     struct PixelCB {
         uint32_t enableInvert;
         uint32_t enableGrayscale;
-        float _pad[2]; // HLSL padding
+        uint32_t enableMatrix;
+        float _pad0;
+        float colorMat[16];
+        float colorOffset[4];
     };
     ::Microsoft::WRL::ComPtr<ID3D11Buffer> m_pixelCb;
     EffectSettings m_settings{};
@@ -84,8 +87,19 @@ private:
 
     // FPS tracking
     LARGE_INTEGER m_qpcFreq{};
-    LARGE_INTEGER m_lastQpc{};
+    unsigned long long m_prevDupPresentQpc{ 0 };
     float  m_fps{ 0.0f };
     double m_fpsAccum{ 0.0 };
     int    m_fpsFrames{ 0 };
+
+    // GPU timing (our draw cost)
+    struct GpuTimerSlot {
+        ::Microsoft::WRL::ComPtr<ID3D11Query> disjoint;
+        ::Microsoft::WRL::ComPtr<ID3D11Query> start;
+        ::Microsoft::WRL::ComPtr<ID3D11Query> end;
+        bool inFlight{ false };
+    } m_gpuTimer[8];
+    int   m_gpuTimerIndex{ 0 };
+    double m_gpuMsLast{ 0.0 };
+    float  m_procFps{ 0.0f };
 };

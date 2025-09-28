@@ -14,7 +14,15 @@ struct EffectSettings
 
     // Custom Matrix Filter
     bool isCustomEffectActive = false;
-    // MAGCOLOREFFECT customEffectMatrix; // Placeholder for a 5x5 matrix
+    // Minimal shader upgrade: 4x4 matrix + offset
+    // Row-major color matrix applied to float4(rgb,1)
+    float colorMat[16]{
+        1,0,0,0,
+        0,1,0,0,
+        0,0,1,0,
+        0,0,0,1
+    };
+    float colorOffset[4]{ 0,0,0,0 };
 
     // Diagnostics
     bool showFpsOverlay = false;

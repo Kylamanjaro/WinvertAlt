@@ -146,8 +146,53 @@ namespace winrt::Winvert4::implementation
 
     void MainWindow::RemoveWindow_Click(IInspectable const&, RoutedEventArgs const&)
     {
-        HWND hwnd = SelectedWindowHwnd();
-        // TODO: RequestRemoveWindowByHwnd
+        int idx = SelectedTabIndex();
+        if (idx < 0) return;
+        auto items = RegionsTabView().TabItems();
+        if (idx >= static_cast<int>(items.Size())) return;
+
+        // Release effect window resources
+        if (idx < static_cast<int>(m_effectWindows.size()))
+        {
+            if (auto& wnd = m_effectWindows[idx])
+            {
+                wnd->Hide();
+                wnd.reset();
+            }
+            m_effectWindows.erase(m_effectWindows.begin() + idx);
+        }
+        if (idx < static_cast<int>(m_windowSettings.size()))
+        {
+            m_windowSettings.erase(m_windowSettings.begin() + idx);
+        }
+        if (idx < static_cast<int>(m_windowHidden.size()))
+        {
+            m_windowHidden.erase(m_windowHidden.begin() + idx);
+        }
+        if (idx < static_cast<int>(m_hasPreviewBackup.size()))
+        {
+            m_hasPreviewBackup.erase(m_hasPreviewBackup.begin() + idx);
+        }
+        if (idx < static_cast<int>(m_previewBackup.size()))
+        {
+            m_previewBackup.erase(m_previewBackup.begin() + idx);
+        }
+
+        // Remove tab and renumber headers
+        items.RemoveAt(static_cast<uint32_t>(idx));
+        for (uint32_t i = 0; i < items.Size(); ++i)
+        {
+            if (auto tab = items.GetAt(i).try_as<TabViewItem>())
+            {
+                tab.Header(box_value(L"Region " + std::to_wstring(i + 1)));
+            }
+        }
+        // Adjust selection
+        if (items.Size() > 0)
+        {
+            RegionsTabView().SelectedIndex(static_cast<int>(std::min<uint32_t>(items.Size() - 1, static_cast<uint32_t>(idx))));
+        }
+        UpdateUIState();
     }
 
     void MainWindow::HideAllWindows_Click(IInspectable const&, RoutedEventArgs const&)
@@ -217,6 +262,24 @@ namespace winrt::Winvert4::implementation
         {
             m_areWindowsHidden = false;
             // TODO: RequestHideAllWindows
+        }
+
+        // If a preview was active, restore original settings
+        if (m_isPreviewActive)
+        {
+            for (int i = 0; i < static_cast<int>(m_windowSettings.size()); ++i)
+            {
+                if (i < static_cast<int>(m_hasPreviewBackup.size()) && m_hasPreviewBackup[i])
+                {
+                    m_windowSettings[i] = m_previewBackup[i];
+                    if (i < static_cast<int>(m_effectWindows.size()))
+                    {
+                        if (auto& wnd = m_effectWindows[i]) wnd->UpdateSettings(m_windowSettings[i]);
+                    }
+                    m_hasPreviewBackup[i] = false;
+                }
+            }
+            m_isPreviewActive = false;
         }
 
         SettingsPanel().Visibility(Visibility::Collapsed);
@@ -515,7 +578,7 @@ namespace winrt::Winvert4::implementation
                        sel.left, sel.top, sel.right, sel.bottom);
 
         // 3) Create a settings object for the new window
-        EffectSettings settings{};
+        EffectSettings settings{}; /* defaults: colorMat=I, colorOffset=0, isCustomEffectActive=false already */
         if (m_pendingEffect == PendingEffect::Invert)
         {
             settings.isInvertEffectEnabled = true;
@@ -869,12 +932,37 @@ namespace winrt::Winvert4::implementation
         uint32_t index;
         if (items.IndexOf(args.Item(), index))
         {
-            auto tab = args.Item().as<TabViewItem>();
-            uint64_t tag = 0;
-            if (auto boxed = tab.Tag()) { tag = unbox_value<uint64_t>(boxed); }
-            HWND hwnd = reinterpret_cast<HWND>(static_cast<uintptr_t>(tag));
-            // TODO: RequestRemoveWindowByHwnd(hwnd)
+            int idx = static_cast<int>(index);
+
+            // Release effect window resources and remove state
+            if (idx < static_cast<int>(m_effectWindows.size()))
+            {
+                if (auto& wnd = m_effectWindows[idx]) { wnd->Hide(); wnd.reset(); }
+                m_effectWindows.erase(m_effectWindows.begin() + idx);
+            }
+            if (idx < static_cast<int>(m_windowSettings.size()))
+                m_windowSettings.erase(m_windowSettings.begin() + idx);
+            if (idx < static_cast<int>(m_windowHidden.size()))
+                m_windowHidden.erase(m_windowHidden.begin() + idx);
+            if (idx < static_cast<int>(m_hasPreviewBackup.size()))
+                m_hasPreviewBackup.erase(m_hasPreviewBackup.begin() + idx);
+            if (idx < static_cast<int>(m_previewBackup.size()))
+                m_previewBackup.erase(m_previewBackup.begin() + idx);
+
             items.RemoveAt(index);
+            // Renumber headers
+            for (uint32_t i = 0; i < items.Size(); ++i)
+            {
+                if (auto tab = items.GetAt(i).try_as<TabViewItem>())
+                {
+                    tab.Header(box_value(L"Region " + std::to_wstring(i + 1)));
+                }
+            }
+            // Adjust selection
+            if (items.Size() > 0)
+            {
+                RegionsTabView().SelectedIndex(static_cast<int>(std::min<uint32_t>(items.Size() - 1, index)));
+            }
             UpdateUIState();
         }
     }
@@ -956,27 +1044,173 @@ namespace winrt::Winvert4::implementation
 
 void winrt::Winvert4::implementation::MainWindow::AddNewFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
 {
-    // TODO: Implement filter logic
+    // Show the editor and seed identity matrix
+    if (auto panel = FilterEditorPanel()) panel.Visibility(Visibility::Visible);
+    if (auto exp = CustomFiltersExpander()) exp.IsExpanded(true);
+
+    // Initialize 5x5 TextBoxes if not present
+    auto grid = FilterMatrixGrid();
+    if (grid && grid.Children().Size() == 0)
+    {
+        for (int r = 0; r < 5; ++r)
+        {
+            for (int c = 0; c < 5; ++c)
+            {
+                auto tb = Microsoft::UI::Xaml::Controls::TextBox();
+                tb.TextAlignment(Microsoft::UI::Xaml::TextAlignment::Center);
+                tb.Width(60); tb.Height(32);
+                Microsoft::UI::Xaml::Controls::Grid::SetRow(tb, r);
+                Microsoft::UI::Xaml::Controls::Grid::SetColumn(tb, c);
+                grid.Children().Append(tb);
+            }
+        }
+    }
+
+    // Seed identity 5x5: diag 1s for RGBA, last column offsets 0, last row 0,0,0,0,1
+    if (grid)
+    {
+        for (auto child : grid.Children())
+        {
+            auto tb = child.try_as<Microsoft::UI::Xaml::Controls::TextBox>();
+            if (!tb) continue;
+            int r = Microsoft::UI::Xaml::Controls::Grid::GetRow(tb);
+            int c = Microsoft::UI::Xaml::Controls::Grid::GetColumn(tb);
+            double v = 0.0;
+            if (r < 4 && c < 4 && r == c) v = 1.0; // 1 on main diag
+            if (r == 4 && c == 4) v = 1.0;         // constant row
+            wchar_t buf[32]; swprintf_s(buf, L"%.3f", v);
+            tb.Text(buf);
+        }
+        if (auto tbName = FilterNameTextBox())
+        {
+            std::wstring base = L"Filter ";
+            base += std::to_wstring(m_savedFilters.size() + 1);
+            tbName.Text(base);
+        }
+    }
 }
 
 void winrt::Winvert4::implementation::MainWindow::SaveFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
 {
-    // TODO: Implement filter logic
+    // Read 5x5 grid -> map to 4x4+offset used by shader
+    auto grid = FilterMatrixGrid();
+    if (!grid) return;
+
+    float mat4[16] = { 0 };
+    float offset[4] = { 0 };
+    // initialize mat as identity, offset 0
+    for (int i = 0; i < 4; ++i) mat4[i * 4 + i] = 1.0f;
+
+    for (auto child : grid.Children())
+    {
+        auto tb = child.try_as<Microsoft::UI::Xaml::Controls::TextBox>();
+        if (!tb) continue;
+        int r = Microsoft::UI::Xaml::Controls::Grid::GetRow(tb);
+        int c = Microsoft::UI::Xaml::Controls::Grid::GetColumn(tb);
+        std::wstring s = std::wstring(tb.Text());
+        try {
+            float v = std::stof(s);
+            if (r >= 0 && r < 4 && c >= 0 && c < 4)
+            {
+                mat4[r * 4 + c] = v; // 4x4 coefficients
+            }
+            else if (r >= 0 && r < 4 && c == 4)
+            {
+                offset[r] = v; // last column is offset for each channel
+            }
+            // row 4 (constant row) ignored; we keep it as 0,0,0,0,1 visually
+        } catch (...) { /* ignore parse errors */ }
+    }
+
+    // Save or update saved filter (no auto-apply)
+    std::wstring name = L"Untitled";
+    if (auto tbName = FilterNameTextBox())
+    {
+        auto s = std::wstring(tbName.Text());
+        if (!s.empty()) name = s;
+    }
+
+    int existing = -1;
+    for (int i = 0; i < static_cast<int>(m_savedFilters.size()); ++i)
+        if (m_savedFilters[i].name == name) { existing = i; break; }
+
+    SavedFilter sf{}; sf.name = name;
+    memcpy(sf.mat, mat4, sizeof(mat4));
+    memcpy(sf.offset, offset, sizeof(offset));
+
+    if (existing >= 0) m_savedFilters[existing] = sf;
+    else m_savedFilters.push_back(sf);
+
+    UpdateSavedFiltersCombo();
+    UpdateFilterDropdown();
+    if (auto combo = SavedFiltersComboBox())
+    {
+        for (int i = 0; i < static_cast<int>(m_savedFilters.size()); ++i)
+            if (m_savedFilters[i].name == name) { combo.SelectedIndex(i); break; }
+    }
 }
 
 void winrt::Winvert4::implementation::MainWindow::DeleteFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
 {
-    // TODO: Implement filter logic
+    // Delete selected saved filter
+    std::wstring name;
+    if (auto tbName = FilterNameTextBox()) name = std::wstring(tbName.Text());
+    if (name.empty()) return;
+    m_savedFilters.erase(std::remove_if(m_savedFilters.begin(), m_savedFilters.end(), [&](const SavedFilter& f){return f.name==name;}), m_savedFilters.end());
+    UpdateSavedFiltersCombo();
+    UpdateFilterDropdown();
 }
 
 void winrt::Winvert4::implementation::MainWindow::ClearFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
 {
-    // TODO: Implement filter logic
+    // Reset grid to identity and offsets to 0, keep editor visible
+    auto grid = FilterMatrixGrid();
+    if (!grid) return;
+    for (auto child : grid.Children())
+    {
+        auto tb = child.try_as<Microsoft::UI::Xaml::Controls::TextBox>();
+        if (!tb) continue;
+        int r = Microsoft::UI::Xaml::Controls::Grid::GetRow(tb);
+        int c = Microsoft::UI::Xaml::Controls::Grid::GetColumn(tb);
+        double v = 0.0;
+        if (r < 4 && c < 4 && r == c) v = 1.0;
+        if (r == 4 && c == 4) v = 1.0;
+        wchar_t buf[32]; swprintf_s(buf, L"%.3f", v);
+        tb.Text(buf);
+    }
 }
 
 void winrt::Winvert4::implementation::MainWindow::SavedFiltersComboBox_SelectionChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&)
 {
-    // TODO: Implement filter logic
+    // Load selected saved filter into the grid for editing (no auto-apply)
+    auto combo = SavedFiltersComboBox();
+    if (!combo) return;
+    int sel = combo.SelectedIndex();
+    if (sel < 0 || sel >= static_cast<int>(m_savedFilters.size())) return;
+
+    auto& sf = m_savedFilters[sel];
+    auto grid = FilterMatrixGrid();
+    if (!grid) return;
+
+    // Ensure editor visible
+    if (auto panel = FilterEditorPanel()) panel.Visibility(Visibility::Visible);
+    if (auto exp = CustomFiltersExpander()) exp.IsExpanded(true);
+    if (auto tbName = FilterNameTextBox()) tbName.Text(sf.name);
+
+    // Write values into 5x5 grid
+    for (auto child : grid.Children())
+    {
+        auto tb = child.try_as<TextBox>();
+        if (!tb) continue;
+        int r = Microsoft::UI::Xaml::Controls::Grid::GetRow(tb);
+        int c = Microsoft::UI::Xaml::Controls::Grid::GetColumn(tb);
+        double v = 0.0;
+        if (r < 4 && c < 4) v = sf.mat[r * 4 + c];
+        else if (r < 4 && c == 4) v = sf.offset[r];
+        else if (r == 4 && c == 4) v = 1.0; // const row
+        wchar_t buf[32]; swprintf_s(buf, L"%.3f", v);
+        tb.Text(buf);
+    }
 }
 
 void winrt::Winvert4::implementation::MainWindow::FilterMenuItem_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -1003,31 +1237,109 @@ void winrt::Winvert4::implementation::MainWindow::FilterMenuItem_Click(winrt::Wi
             //ApplyCompositeCustomFiltersForTab(idx);
         }
         m_keepFiltersFlyoutOpenNext = false; // allow close
-        //UpdateFilterDropdown();
+        UpdateFilterDropdown();
         return;
     }
 
-    // Toggle item by index and apply composite; keep flyout open
-    //if (tagIndex >= 0 && tagIndex < static_cast<int>(m_savedFilters.size()))
-    //{
-    //    int idx = SelectedTabIndex();
-    //    if (idx >= 0)
-    //    {
-    //        if (static_cast<int>(m_tabFilterSelections.size()) <= idx)
-    //        {
-    //            m_tabFilterSelections.resize(idx + 1);
-    //        }
-    //        if (static_cast<int>(m_tabFilterSelections[idx].size()) != static_cast<int>(m_savedFilters.size()))
-    //        {
-    //            m_tabFilterSelections[idx].assign(m_savedFilters.size(), false);
-    //        }
-    //        if (auto toggleItem = menuItem.try_as<Microsoft::UI::Xaml::Controls::ToggleMenuFlyoutItem>())
-    //        {
-    //            m_tabFilterSelections[idx][tagIndex] = toggleItem.IsChecked();
-    //        }
-    //        ApplyCompositeCustomFiltersForTab(idx);
-    //    }
-    //    m_keepFiltersFlyoutOpenNext = true;
-    //    UpdateFilterDropdown();
-    //}
+    // Apply saved filter by index (single selection), close flyout
+    if (tagIndex >= 0 && tagIndex < static_cast<int>(m_savedFilters.size()))
+    {
+        int idx = SelectedTabIndex();
+        if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
+        {
+            auto& sf = m_savedFilters[tagIndex];
+            m_windowSettings[idx].isCustomEffectActive = true;
+            memcpy(m_windowSettings[idx].colorMat, sf.mat, sizeof(sf.mat));
+            memcpy(m_windowSettings[idx].colorOffset, sf.offset, sizeof(sf.offset));
+            if (idx < static_cast<int>(m_effectWindows.size()))
+            {
+                if (auto& wnd = m_effectWindows[idx]) wnd->UpdateSettings(m_windowSettings[idx]);
+            }
+        }
+        m_keepFiltersFlyoutOpenNext = false;
+        UpdateFilterDropdown();
+    }
 }
+
+// Build flyout items from saved filters
+void winrt::Winvert4::implementation::MainWindow::UpdateFilterDropdown()
+{
+    auto flyout = FiltersMenuFlyout();
+    if (!flyout) return;
+    flyout.Items().Clear();
+
+    auto noneItem = MenuFlyoutItem();
+    noneItem.Text(L"None");
+    noneItem.Tag(box_value(-1));
+    noneItem.Click({ this, &MainWindow::FilterMenuItem_Click });
+    flyout.Items().Append(noneItem);
+
+    for (int i = 0; i < static_cast<int>(m_savedFilters.size()); ++i)
+    {
+        auto item = MenuFlyoutItem();
+        item.Text(m_savedFilters[i].name);
+        item.Tag(box_value(i));
+        item.Click({ this, &MainWindow::FilterMenuItem_Click });
+        flyout.Items().Append(item);
+    }
+}
+
+void winrt::Winvert4::implementation::MainWindow::UpdateSavedFiltersCombo()
+{
+    auto combo = SavedFiltersComboBox();
+    if (!combo) return;
+    combo.Items().Clear();
+    for (auto& sf : m_savedFilters)
+    {
+        combo.Items().Append(box_value(sf.name));
+    }
+}
+
+void winrt::Winvert4::implementation::MainWindow::PreviewFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+{
+    // Apply current grid as a temporary preview to the selected window
+    auto grid = FilterMatrixGrid();
+    if (!grid) return;
+
+    float mat4[16] = { 0 };
+    float offset[4] = { 0 };
+    for (int i = 0; i < 4; ++i) mat4[i * 4 + i] = 1.0f;
+    for (auto child : grid.Children())
+    {
+        auto tb = child.try_as<TextBox>();
+        if (!tb) continue;
+        int r = Microsoft::UI::Xaml::Controls::Grid::GetRow(tb);
+        int c = Microsoft::UI::Xaml::Controls::Grid::GetColumn(tb);
+        try {
+            float v = std::stof(std::wstring(tb.Text()));
+            if (r >= 0 && r < 4 && c >= 0 && c < 4) mat4[r * 4 + c] = v;
+            else if (r >= 0 && r < 4 && c == 4) offset[r] = v;
+        } catch (...) {}
+    }
+
+    int idx = SelectedTabIndex();
+    if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
+
+    // Ensure backup vectors sized
+    if (static_cast<int>(m_hasPreviewBackup.size()) < static_cast<int>(m_windowSettings.size()))
+    {
+        m_hasPreviewBackup.resize(m_windowSettings.size(), false);
+        m_previewBackup.resize(m_windowSettings.size());
+    }
+
+    if (!m_hasPreviewBackup[idx])
+    {
+        m_previewBackup[idx] = m_windowSettings[idx];
+        m_hasPreviewBackup[idx] = true;
+    }
+
+    m_windowSettings[idx].isCustomEffectActive = true;
+    memcpy(m_windowSettings[idx].colorMat, mat4, sizeof(mat4));
+    memcpy(m_windowSettings[idx].colorOffset, offset, sizeof(offset));
+    if (idx < static_cast<int>(m_effectWindows.size()))
+    {
+        if (auto& wnd = m_effectWindows[idx]) wnd->UpdateSettings(m_windowSettings[idx]);
+    }
+    m_isPreviewActive = true;
+}
+

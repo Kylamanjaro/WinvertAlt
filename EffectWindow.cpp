@@ -31,6 +31,10 @@ namespace {
         cbuffer PixelCB : register(b1) {
             uint enableInvert;
             uint enableGrayscale;
+            uint enableMatrix;
+            uint _pad0;
+            row_major float4x4 colorMat;
+            float4   colorOffset;
         };
 
         struct PSIn { float4 pos:SV_Position; float2 uv:TEXCOORD0; };
@@ -42,7 +46,7 @@ namespace {
           if (enableGrayscale) {
               result = dot(result, float3(0.299, 0.587, 0.114));
           }
-          return float4(result, 1.0);
+          if (enableMatrix != 0) { float4 cr = mul(float4(result,1.0), colorMat); result = cr.rgb + colorOffset.rgb; } return float4(result, 1.0);
         })";
 }
 
@@ -178,8 +182,20 @@ void EffectWindow::UpdateCBs_()
 
     // Update Pixel Shader CB
     PixelCB pcb{};
-    pcb.enableInvert = m_settings.isInvertEffectEnabled;
-    pcb.enableGrayscale = m_settings.isGrayscaleEffectEnabled;
+    pcb.enableInvert     = m_settings.isInvertEffectEnabled ? 1u : 0u;
+    pcb.enableGrayscale  = m_settings.isGrayscaleEffectEnabled ? 1u : 0u;
+    pcb.enableMatrix     = m_settings.isCustomEffectActive ? 1u : 0u;
+    if (m_settings.isCustomEffectActive)
+    {
+        memcpy(pcb.colorMat,    m_settings.colorMat,    sizeof(pcb.colorMat));
+        memcpy(pcb.colorOffset, m_settings.colorOffset, sizeof(pcb.colorOffset));
+    }
+    else
+    {
+        const float ident[16] = { 1,0,0,0,  0,1,0,0,  0,0,1,0,  0,0,0,1 };
+        memset(pcb.colorOffset, 0, sizeof(pcb.colorOffset));
+        memcpy(pcb.colorMat, ident, sizeof(ident));
+    }
     m_deferredCtx->UpdateSubresource(m_pixelCb.Get(), 0, nullptr, &pcb, 0, 0);
 
     winvert4::Logf("EW: CB scale=(%.3f,%.3f) offset=(%.3f,%.3f)", vcb.scale[0], vcb.scale[1], vcb.offset[0], vcb.offset[1]);
@@ -275,9 +291,18 @@ void EffectWindow::CreateAndShow()
         }
     }
 
-    // Init FPS timer
+    // Init FPS timer (frequency for converting duplication QPC to seconds)
     QueryPerformanceFrequency(&m_qpcFreq);
-    QueryPerformanceCounter(&m_lastQpc);
+
+    // Create GPU timer queries (ring to avoid stalls)
+    D3D11_QUERY_DESC qd{}; qd.MiscFlags = 0;
+    for (int i = 0; i < 8; ++i)
+    {
+        qd.Query = D3D11_QUERY_TIMESTAMP_DISJOINT; m_d3d->CreateQuery(&qd, &m_gpuTimer[i].disjoint);
+        qd.Query = D3D11_QUERY_TIMESTAMP;          m_d3d->CreateQuery(&qd, &m_gpuTimer[i].start);
+        qd.Query = D3D11_QUERY_TIMESTAMP;          m_d3d->CreateQuery(&qd, &m_gpuTimer[i].end);
+        m_gpuTimer[i].inFlight = false;
+    }
 
     // Shaders
     ComPtr<ID3DBlob> vsb, psb, err;
@@ -336,7 +361,7 @@ void EffectWindow::CreateAndShow()
     m_run = true;
 }
 
-void EffectWindow::Render(ID3D11Texture2D* frame)
+void EffectWindow::Render(ID3D11Texture2D* frame, unsigned long long lastPresentQpc)
 {
     if (!m_run || !frame || !m_swapChain) return;
 
@@ -401,16 +426,31 @@ void EffectWindow::Render(ID3D11Texture2D* frame)
     // Execute commands on the immediate context
     ComPtr<ID3D11CommandList> commandList;
     if (SUCCEEDED(m_deferredCtx->FinishCommandList(FALSE, &commandList))) {
-        // No lock needed, as this is called from the DuplicationThread's loop
-        m_immediateCtx->ExecuteCommandList(commandList.Get(), FALSE);
-    }
+        // GPU timer begin (immediate context)
+        GpuTimerSlot& slot = m_gpuTimer[m_gpuTimerIndex];
+        if (slot.inFlight)
+        {
+            // Avoid reusing queries whose results haven't been collected yet
+            // We'll try to resolve them after Present below.
+        }
+        if (!slot.inFlight && slot.disjoint && slot.start && slot.end)
+        {
+            m_immediateCtx->Begin(slot.disjoint.Get());
+            m_immediateCtx->End(slot.start.Get());
+        }
 
-    // FPS calculation
-    LARGE_INTEGER now{}; QueryPerformanceCounter(&now);
-    const double dt = double(now.QuadPart - m_lastQpc.QuadPart) / double(m_qpcFreq.QuadPart);
-    m_lastQpc = now;
-    m_fpsAccum += dt; m_fpsFrames += 1;
-    if (m_fpsAccum >= 0.5) { m_fps = static_cast<float>(m_fpsFrames / m_fpsAccum); m_fpsAccum = 0.0; m_fpsFrames = 0; }
+        // Execute draw commands
+        m_immediateCtx->ExecuteCommandList(commandList.Get(), FALSE);
+
+        // GPU timer end
+        if (!slot.inFlight && slot.disjoint && slot.start && slot.end)
+        {
+            m_immediateCtx->End(slot.end.Get());
+            m_immediateCtx->End(slot.disjoint.Get());
+            slot.inFlight = true;
+            m_gpuTimerIndex = (m_gpuTimerIndex + 1) % 8;
+        }
+    }
 
     // Optional FPS overlay (top-right)
     if (m_settings.showFpsOverlay && m_d2dCtx && m_textFormat && m_textBrush)
@@ -432,11 +472,14 @@ void EffectWindow::Render(ID3D11Texture2D* frame)
                     m_d2dCtx->BeginDraw();
 
                     const float w = static_cast<float>(m_desktopRect.right - m_desktopRect.left);
-                    D2D1_RECT_F rect = D2D1::RectF(w - 110.f, 4.f, w - 6.f, 28.f);
+                    // Two-line compact overlay: source Hz and our processing time
+                    D2D1_RECT_F rect1 = D2D1::RectF(w - 140.f, 4.f,  w - 6.f, 24.f);
+                    D2D1_RECT_F rect2 = D2D1::RectF(w - 140.f, 24.f, w - 6.f, 44.f);
 
-                    wchar_t buf[32];
-                    swprintf_s(buf, L"%3.0f FPS", m_fps);
-                    m_d2dCtx->DrawTextW(buf, (UINT32)wcslen(buf), m_textFormat.Get(), rect, m_textBrush.Get());
+                    wchar_t line1[64]; swprintf_s(line1, L"Src %.0f Hz", m_fps);
+                    wchar_t line2[64]; swprintf_s(line2, L"Draw %.1f ms (%.0f)", m_gpuMsLast, m_procFps);
+                    m_d2dCtx->DrawTextW(line1, (UINT32)wcslen(line1), m_textFormat.Get(), rect1, m_textBrush.Get());
+                    m_d2dCtx->DrawTextW(line2, (UINT32)wcslen(line2), m_textFormat.Get(), rect2, m_textBrush.Get());
 
                     // Optional: subtle background for readability
                     // Could draw with another brush under text if desired
@@ -448,5 +491,55 @@ void EffectWindow::Render(ID3D11Texture2D* frame)
         }
     }
 
+    // Present blocks to vblank when sync interval = 1 (vsynced to monitor)
     m_swapChain->Present(1, 0);
+
+    // FPS calculation based on DXGI Desktop Duplication's LastPresentTime (QPC)
+    // This reflects the monitor's present cadence, independent of our swapchain/window mode.
+    if (lastPresentQpc != 0 && m_qpcFreq.QuadPart != 0)
+    {
+        if (m_prevDupPresentQpc != 0 && lastPresentQpc > m_prevDupPresentQpc)
+        {
+            const double dt = double(lastPresentQpc - m_prevDupPresentQpc) / double(m_qpcFreq.QuadPart);
+            if (dt > 0)
+            {
+                m_fpsAccum += dt; m_fpsFrames += 1;
+                if (m_fpsAccum >= 0.5)
+                {
+                    m_fps = static_cast<float>(m_fpsFrames / m_fpsAccum);
+                    m_fpsAccum = 0.0; m_fpsFrames = 0;
+                }
+            }
+        }
+        m_prevDupPresentQpc = lastPresentQpc;
+    }
+
+    // Resolve GPU timers for any slots in flight (non-blocking)
+    for (int i = 0; i < 8; ++i)
+    {
+        if (!m_gpuTimer[i].inFlight) continue;
+        auto& t = m_gpuTimer[i];
+        if (!t.disjoint || !t.start || !t.end) { t.inFlight = false; continue; }
+
+        D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjointData{};
+        if (S_OK == m_immediateCtx->GetData(t.disjoint.Get(), &disjointData, sizeof(disjointData), 0))
+        {
+            if (!disjointData.Disjoint)
+            {
+                UINT64 tsStart = 0, tsEnd = 0;
+                if (S_OK == m_immediateCtx->GetData(t.start.Get(), &tsStart, sizeof(tsStart), 0) &&
+                    S_OK == m_immediateCtx->GetData(t.end.Get(),   &tsEnd,   sizeof(tsEnd),   0) &&
+                    tsEnd > tsStart)
+                {
+                    const double gpuSec = double(tsEnd - tsStart) / double(disjointData.Frequency);
+                    m_gpuMsLast = gpuSec * 1000.0;
+                    if (m_gpuMsLast > 0.0) m_procFps = static_cast<float>(1000.0 / m_gpuMsLast);
+                }
+            }
+            t.inFlight = false;
+        }
+    }
 }
+
+
+
