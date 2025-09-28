@@ -56,6 +56,11 @@ LRESULT CALLBACK EffectWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
     if (msg == WM_NCHITTEST) {
         return HTTRANSPARENT;
     }
+    if (msg == WM_SETCURSOR) {
+        // Ensure we never show a resize/drag cursor when hovering near the effect window
+        ::SetCursor(LoadCursorW(nullptr, IDC_ARROW));
+        return TRUE;
+    }
 
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }

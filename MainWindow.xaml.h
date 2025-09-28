@@ -55,6 +55,14 @@ namespace winrt::Winvert4::implementation
         void DeleteFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void ClearFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void PreviewFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void ApplyFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void AdvancedMatrixToggle_Toggled(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void BrightnessSlider_ValueChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const&);
+        void ContrastSlider_ValueChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const&);
+        void SaturationSlider_ValueChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const&);
+        void TemperatureSlider_ValueChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const&);
+        void TintSlider_ValueChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const&);
+        void SimpleResetButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void SavedFiltersComboBox_SelectionChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
         void FilterMenuItem_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
 
@@ -145,6 +153,16 @@ namespace winrt::Winvert4::implementation
         std::vector<bool> m_hasPreviewBackup;
         std::vector<EffectSettings> m_previewBackup;
 
+        // Simple (normal) mode filter parameters
+        float m_simpleBrightness{ 0.0f };   // [-1..1]
+        float m_simpleContrast{ 1.0f };     // [0..2]
+        float m_simpleSaturation{ 1.0f };   // [0..2]
+        float m_simpleTemperature{ 0.0f };  // [-1..1]
+        float m_simpleTint{ 0.0f };         // [-1..1]
+
+        void ComposeSimpleMatrix(float (&outMat)[16], float (&outOff)[4]);
+        void WriteMatrixToGrid(const float (&mat)[16], const float (&off)[4]);
+
         // --- UI Helpers ---
         void UpdateUIState();
         void SetWindowSize(int width, int height);
@@ -169,3 +187,4 @@ namespace winrt::Winvert4::factory_implementation
 {
     struct MainWindow : MainWindowT<MainWindow, implementation::MainWindow> {};
 }
+

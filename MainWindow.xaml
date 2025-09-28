@@ -224,7 +224,7 @@
                                                 <TextBlock Text="Alpha" Height="32" VerticalAlignment="Center"/>
                                                 <TextBlock Text="Offset" Height="32" VerticalAlignment="Center"/>
                                             </StackPanel>
-                                            <Grid x:Name="FilterMatrixGrid" Grid.Column="1" ColumnSpacing="5" RowSpacing="5">
+                                            <Grid x:Name="FilterMatrixGrid" Grid.Column="1" ColumnSpacing="5" RowSpacing="5" Visibility="Collapsed">
                                                 <Grid.RowDefinitions>
                                                     <RowDefinition Height="Auto"/>
                                                     <RowDefinition Height="Auto"/>
@@ -241,9 +241,30 @@
                                                 </Grid.ColumnDefinitions>
                                             </Grid>
                                         </Grid>
+                                        <!-- Simple Mode Controls -->
+                                        <StackPanel x:Name="SimpleFilterPanel" Spacing="8" Margin="0,10,0,0">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+                                                <TextBlock Text="Advanced Matrix"/>
+                                                <ToggleSwitch x:Name="AdvancedMatrixToggle" Toggled="AdvancedMatrixToggle_Toggled"/>
+                                                <Button x:Name="SimpleResetButton" Content="Reset" Click="SimpleResetButton_Click"/>
+                                            </StackPanel>
+                                            <StackPanel x:Name="SimpleSlidersPanel" Spacing="4">
+                                                <TextBlock Text="Brightness"/>
+                                                <Slider x:Name="BrightnessSlider" Minimum="-1" Maximum="1" StepFrequency="0.01" ValueChanged="BrightnessSlider_ValueChanged"/>
+                                                <TextBlock Text="Contrast"/>
+                                                <Slider x:Name="ContrastSlider" Minimum="0" Maximum="2" StepFrequency="0.01" ValueChanged="ContrastSlider_ValueChanged"/>
+                                                <TextBlock Text="Saturation"/>
+                                                <Slider x:Name="SaturationSlider" Minimum="0" Maximum="2" StepFrequency="0.01" ValueChanged="SaturationSlider_ValueChanged"/>
+                                                <TextBlock Text="Temperature"/>
+                                                <Slider x:Name="TemperatureSlider" Minimum="-1" Maximum="1" StepFrequency="0.01" ValueChanged="TemperatureSlider_ValueChanged"/>
+                                                <TextBlock Text="Tint"/>
+                                                <Slider x:Name="TintSlider" Minimum="-1" Maximum="1" StepFrequency="0.01" ValueChanged="TintSlider_ValueChanged"/>
+                                            </StackPanel>
+                                        </StackPanel>
                                         <StackPanel Orientation="Horizontal" Spacing="5" Margin="0,10,0,0">
                                             <Button x:Name="SaveFilterButton" Content="Save" Click="SaveFilterButton_Click"/>
                                             <Button x:Name="PreviewFilterButton" Content="Preview" Click="PreviewFilterButton_Click"/>
+                                            <Button x:Name="ApplyFilterButton" Content="Apply" Click="ApplyFilterButton_Click"/>
                                             <Button x:Name="DeleteFilterButton" Content="Delete" Click="DeleteFilterButton_Click" IsEnabled="False"/>
                                             <Button x:Name="ClearFilterButton" Content="Clear" Click="ClearFilterButton_Click"/>
                                         </StackPanel>
