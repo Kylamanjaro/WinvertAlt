@@ -242,8 +242,7 @@ namespace winrt::Winvert4::implementation
         if (idx >= static_cast<int>(m_windowSettings.size())) return;
         if (idx >= static_cast<int>(m_windowHidden.size())) m_windowHidden.resize(m_windowSettings.size(), false);
         m_windowHidden[idx] = !m_windowHidden[idx];
-        HWND hwnd = SelectedWindowHwnd();
-        // TODO: RequestSetWindowHiddenByHwnd
+        SetHiddenForGroup(idx, m_windowHidden[idx]);
         UpdateUIState();
     }
 
@@ -253,7 +252,7 @@ namespace winrt::Winvert4::implementation
         if (!m_areWindowsHidden)
         {
             m_areWindowsHidden = true;
-            // TODO: RequestHideAllWindows
+            SetHiddenForAll(true);
             UpdateUIState();
         }
 
@@ -302,7 +301,12 @@ namespace winrt::Winvert4::implementation
         if (!m_wereWindowsHiddenForSettings)
         {
             m_areWindowsHidden = false;
-            // TODO: RequestHideAllWindows
+            // Show all windows, then reapply per-tab hidden states
+            SetHiddenForAll(false);
+            for (int i = 0; i < static_cast<int>(m_windowHidden.size()); ++i)
+            {
+                if (m_windowHidden[i]) SetHiddenForGroup(i, true);
+            }
         }
 
         // If a preview was active, restore original settings
@@ -1168,6 +1172,30 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
             {
                 if (ew) ew->UpdateSettings(settings);
             }
+        }
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::SetHiddenForGroup(int idx, bool hidden)
+    {
+        if (idx < 0) return;
+        if (idx < static_cast<int>(m_effectWindows.size()))
+        {
+            if (auto& wnd = m_effectWindows[idx]) wnd->SetHidden(hidden);
+        }
+        if (idx < static_cast<int>(m_effectWindowExtras.size()))
+        {
+            for (auto& ew : m_effectWindowExtras[idx])
+            {
+                if (ew) ew->SetHidden(hidden);
+            }
+        }
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::SetHiddenForAll(bool hidden)
+    {
+        for (int i = 0; i < static_cast<int>(m_effectWindows.size()); ++i)
+        {
+            SetHiddenForGroup(i, hidden);
         }
     }
 

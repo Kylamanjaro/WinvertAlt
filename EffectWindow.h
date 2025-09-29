@@ -17,6 +17,8 @@ public:
 
     void Show();
     void Hide();
+    void SetHidden(bool hidden);
+    bool IsHidden() const { return m_isHidden; }
     void UpdateSettings(const EffectSettings& settings);
 
     // Called by DuplicationThread to render a frame
@@ -77,6 +79,7 @@ private:
 
     // Threading
     std::atomic<bool> m_run{ false };
+    bool m_isHidden{ false };
 
     // Source duplication thread (not owned)
     DuplicationThread* m_thread{ nullptr };

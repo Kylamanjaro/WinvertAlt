@@ -195,6 +195,8 @@ namespace winrt::Winvert4::implementation
         // Apply current or provided settings to the primary + any extra windows for a tab index
         void UpdateSettingsForGroup(int idx);
         void UpdateSettingsForGroup(int idx, const EffectSettings& settings);
+        void SetHiddenForGroup(int idx, bool hidden);
+        void SetHiddenForAll(bool hidden);
 
         // --- Icon Sources ---
         winrt::Microsoft::UI::Xaml::Media::ImageSource m_brightnessOnIconSource{ nullptr };

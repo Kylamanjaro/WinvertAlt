@@ -143,6 +143,7 @@ void EffectWindow::Show()
 
     // 3) Create the window and pipeline now.
     CreateAndShow();
+    m_isHidden = false;
 }
 
 void EffectWindow::Hide()
@@ -165,6 +166,15 @@ void EffectWindow::Hide()
 
     // Destroy window
     if (m_hwnd) { DestroyWindow(m_hwnd); m_hwnd = nullptr; }
+}
+
+void EffectWindow::SetHidden(bool hidden)
+{
+    m_isHidden = hidden;
+    if (m_hwnd)
+    {
+        ::ShowWindow(m_hwnd, hidden ? SW_HIDE : SW_SHOWNOACTIVATE);
+    }
 }
 
 void EffectWindow::EnsureSRVLocked_(ID3D11Texture2D* currentTex)
@@ -439,7 +449,7 @@ void EffectWindow::CreateAndShow()
 
 void EffectWindow::Render(ID3D11Texture2D* frame, unsigned long long lastPresentQpc)
 {
-    if (!m_run || !frame || !m_swapChain) return;
+    if (!m_run || m_isHidden || !frame || !m_swapChain) return;
 
     // Ensure SRV reflects current texture
     EnsureSRVLocked_(frame);
