@@ -116,3 +116,21 @@ DuplicationThread* OutputManager::GetThreadForRect(const RECT& rc)
     return bestThread;
 }
 
+void OutputManager::GetIntersectingRects(const RECT& rc, std::vector<RECT>& outRects)
+{
+    outRects.clear();
+    for (auto const& [key, val] : m_duplicationThreads)
+    {
+        const RECT& outputRect = val->GetOutputRect();
+        RECT intersection{};
+        if (IntersectRect(&intersection, &rc, &outputRect))
+        {
+            outRects.push_back(intersection);
+        }
+    }
+    if (outRects.empty())
+    {
+        // Fallback: no outputs reported; return the original rect
+        outRects.push_back(rc);
+    }
+}

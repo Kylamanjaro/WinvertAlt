@@ -143,15 +143,9 @@ namespace winrt::Winvert4::implementation
         s.brightnessThreshold = m_brightnessThreshold;
         s.brightnessProtectionDelay = m_brightnessProtectionDelay;
         UpdateUIState();
-        // Push to the active effect window immediately so it takes effect without needing another toggle
-        if (idx < static_cast<int>(m_effectWindows.size()))
-        {
-            if (auto& wnd = m_effectWindows[idx])
-            {
-                ApplyGlobalColorMapsToSettings(s);
-                wnd->UpdateSettings(s);
-            }
-        }
+        // Push to all effect windows in the group immediately
+        ApplyGlobalColorMapsToSettings(s);
+        UpdateSettingsForGroup(idx, s);
     }
 
     void winrt::Winvert4::implementation::MainWindow::InvertEffect_Click(IInspectable const&, RoutedEventArgs const&)
@@ -161,14 +155,8 @@ namespace winrt::Winvert4::implementation
         auto& s = m_windowSettings[idx];
         s.isInvertEffectEnabled = !s.isInvertEffectEnabled;
         UpdateUIState();
-        if (idx < static_cast<int>(m_effectWindows.size()))
-        {
-            if (auto& wnd = m_effectWindows[idx])
-            {
-                ApplyGlobalColorMapsToSettings(s);
-                wnd->UpdateSettings(s);
-            }
-        }
+        ApplyGlobalColorMapsToSettings(s);
+        UpdateSettingsForGroup(idx, s);
     }
 
     void winrt::Winvert4::implementation::MainWindow::GrayscaleEffect_Click(IInspectable const&, RoutedEventArgs const&)
@@ -178,14 +166,8 @@ namespace winrt::Winvert4::implementation
         auto& s = m_windowSettings[idx];
         s.isGrayscaleEffectEnabled = !s.isGrayscaleEffectEnabled;
         UpdateUIState();
-        if (idx < static_cast<int>(m_effectWindows.size()))
-        {
-            if (auto& wnd = m_effectWindows[idx])
-            {
-                ApplyGlobalColorMapsToSettings(s);
-                wnd->UpdateSettings(s);
-            }
-        }
+        ApplyGlobalColorMapsToSettings(s);
+        UpdateSettingsForGroup(idx, s);
     }
 
     void winrt::Winvert4::implementation::MainWindow::AddWindow_Click(IInspectable const&, RoutedEventArgs const&)
@@ -209,6 +191,15 @@ namespace winrt::Winvert4::implementation
                 wnd.reset();
             }
             m_effectWindows.erase(m_effectWindows.begin() + idx);
+        }
+        if (idx < static_cast<int>(m_effectWindowExtras.size()))
+        {
+            auto& extras = m_effectWindowExtras[idx];
+            for (auto& ew : extras)
+            {
+                if (ew) { ew->Hide(); ew.reset(); }
+            }
+            m_effectWindowExtras.erase(m_effectWindowExtras.begin() + idx);
         }
         if (idx < static_cast<int>(m_windowSettings.size()))
         {
@@ -322,10 +313,7 @@ namespace winrt::Winvert4::implementation
                 if (i < static_cast<int>(m_hasPreviewBackup.size()) && m_hasPreviewBackup[i])
                 {
                     m_windowSettings[i] = m_previewBackup[i];
-                    if (i < static_cast<int>(m_effectWindows.size()))
-                    {
-                        if (auto& wnd = m_effectWindows[i]) wnd->UpdateSettings(m_windowSettings[i]);
-                    }
+                    UpdateSettingsForGroup(i);
                     m_hasPreviewBackup[i] = false;
                 }
             }
@@ -457,8 +445,7 @@ void winrt::Winvert4::implementation::MainWindow::BrightnessSlider_ValueChanged(
             m_windowSettings[idx].isCustomEffectActive = true;
             memcpy(m_windowSettings[idx].colorMat, m, sizeof(m));
             memcpy(m_windowSettings[idx].colorOffset, off, sizeof(off));
-            if (idx < static_cast<int>(m_effectWindows.size()))
-                if (auto& wnd = m_effectWindows[idx]) wnd->UpdateSettings(m_windowSettings[idx]);
+            UpdateSettingsForGroup(idx);
         }
     }
 }
@@ -476,8 +463,7 @@ void winrt::Winvert4::implementation::MainWindow::ContrastSlider_ValueChanged(II
             m_windowSettings[idx].isCustomEffectActive = true;
             memcpy(m_windowSettings[idx].colorMat, m, sizeof(m));
             memcpy(m_windowSettings[idx].colorOffset, off, sizeof(off));
-            if (idx < static_cast<int>(m_effectWindows.size()))
-                if (auto& wnd = m_effectWindows[idx]) wnd->UpdateSettings(m_windowSettings[idx]);
+            UpdateSettingsForGroup(idx);
         }
     }
 }
@@ -495,8 +481,7 @@ void winrt::Winvert4::implementation::MainWindow::SaturationSlider_ValueChanged(
             m_windowSettings[idx].isCustomEffectActive = true;
             memcpy(m_windowSettings[idx].colorMat, m, sizeof(m));
             memcpy(m_windowSettings[idx].colorOffset, off, sizeof(off));
-            if (idx < static_cast<int>(m_effectWindows.size()))
-                if (auto& wnd = m_effectWindows[idx]) wnd->UpdateSettings(m_windowSettings[idx]);
+            UpdateSettingsForGroup(idx);
         }
     }
 }
@@ -514,8 +499,7 @@ void winrt::Winvert4::implementation::MainWindow::TemperatureSlider_ValueChanged
             m_windowSettings[idx].isCustomEffectActive = true;
             memcpy(m_windowSettings[idx].colorMat, m, sizeof(m));
             memcpy(m_windowSettings[idx].colorOffset, off, sizeof(off));
-            if (idx < static_cast<int>(m_effectWindows.size()))
-                if (auto& wnd = m_effectWindows[idx]) wnd->UpdateSettings(m_windowSettings[idx]);
+            UpdateSettingsForGroup(idx);
         }
     }
 }
@@ -533,8 +517,7 @@ void winrt::Winvert4::implementation::MainWindow::TintSlider_ValueChanged(IInspe
             m_windowSettings[idx].isCustomEffectActive = true;
             memcpy(m_windowSettings[idx].colorMat, m, sizeof(m));
             memcpy(m_windowSettings[idx].colorOffset, off, sizeof(off));
-            if (idx < static_cast<int>(m_effectWindows.size()))
-                if (auto& wnd = m_effectWindows[idx]) wnd->UpdateSettings(m_windowSettings[idx]);
+            UpdateSettingsForGroup(idx);
         }
     }
 }
@@ -559,11 +542,7 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
             if (m_windowSettings[i].isBrightnessProtectionEnabled)
             {
                 m_windowSettings[i].brightnessThreshold = m_brightnessThreshold;
-                if (i < m_effectWindows.size())
-                {
-                    if (auto& wnd = m_effectWindows[i])
-                        wnd->UpdateSettings(m_windowSettings[i]);
-                }
+                UpdateSettingsForGroup(static_cast<int>(i));
             }
         }
     }
@@ -577,11 +556,7 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
             if (m_windowSettings[i].isBrightnessProtectionEnabled)
             {
                 m_windowSettings[i].brightnessProtectionDelay = m_brightnessProtectionDelay;
-                if (i < m_effectWindows.size())
-                {
-                    if (auto& wnd = m_effectWindows[i])
-                        wnd->UpdateSettings(m_windowSettings[i]);
-                }
+                UpdateSettingsForGroup(static_cast<int>(i));
             }
         }
     }
@@ -608,15 +583,10 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
     {
         // Sync setting and push to existing windows
         m_showFpsOverlay = ShowFpsToggle().IsOn();
-        for (auto& wnd : m_effectWindows)
+        for (size_t i = 0; i < m_effectWindows.size(); ++i)
         {
-            if (!wnd) continue;
-            int idx = &wnd - &m_effectWindows[0];
-            if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
-            {
-                m_windowSettings[idx].showFpsOverlay = m_showFpsOverlay;
-                wnd->UpdateSettings(m_windowSettings[idx]);
-            }
+            m_windowSettings[i].showFpsOverlay = m_showFpsOverlay;
+            UpdateSettingsForGroup(static_cast<int>(i));
         }
     }
 
@@ -836,8 +806,13 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
         m_windowSettings.push_back(settings);
         m_pendingEffect = PendingEffect::None; // Reset for next time
 
-        // 3) Create and show the effect window AFTER overlay is gone
-        auto newWindow = std::make_unique<EffectWindow>(sel, m_outputManager.get());
+        // 3) Create one or more effect windows depending on monitor intersections
+        std::vector<RECT> splits;
+        if (m_outputManager) m_outputManager->GetIntersectingRects(sel, splits);
+        if (splits.empty()) splits.push_back(sel);
+
+        // Primary window is the first split; extras are any additional splits
+        auto newWindow = std::make_unique<EffectWindow>(splits[0], m_outputManager.get());
         newWindow->UpdateSettings(settings);
         newWindow->Show();
 
@@ -847,7 +822,18 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
         RegionsTabView().TabItems().Append(newTab);
         RegionsTabView().SelectedItem(newTab);
 
+        // Create extra windows for additional monitors
+        std::vector<std::unique_ptr<EffectWindow>> extras;
+        for (size_t i = 1; i < splits.size(); ++i)
+        {
+            auto w = std::make_unique<EffectWindow>(splits[i], m_outputManager.get());
+            w->UpdateSettings(settings);
+            w->Show();
+            extras.push_back(std::move(w));
+        }
+
         m_effectWindows.push_back(std::move(newWindow));
+        m_effectWindowExtras.push_back(std::move(extras));
 
         // Reveal the control panel window after first selection is created
         if (!m_controlPanelShownYet)
@@ -1156,6 +1142,35 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
         else settings.colorMaps.clear();
     }
 
+    void winrt::Winvert4::implementation::MainWindow::UpdateSettingsForGroup(int idx)
+    {
+        if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
+    UpdateSettingsForGroup(idx);
+        if (idx < static_cast<int>(m_effectWindowExtras.size()))
+        {
+            for (auto& ew : m_effectWindowExtras[idx])
+            {
+                if (ew) ew->UpdateSettings(m_windowSettings[idx]);
+            }
+        }
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::UpdateSettingsForGroup(int idx, const EffectSettings& settings)
+    {
+        if (idx < 0) return;
+        if (idx < static_cast<int>(m_effectWindows.size()))
+        {
+            if (auto& wnd = m_effectWindows[idx]) wnd->UpdateSettings(settings);
+        }
+        if (idx < static_cast<int>(m_effectWindowExtras.size()))
+        {
+            for (auto& ew : m_effectWindowExtras[idx])
+            {
+                if (ew) ew->UpdateSettings(settings);
+            }
+        }
+    }
+
     void winrt::Winvert4::implementation::MainWindow::StartColorSample()
     {
         if (m_isSelecting) return;
@@ -1199,9 +1214,10 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
         int idxSel = SelectedTabIndex();
         if (idxSel >= 0 && idxSel < static_cast<int>(m_windowSettings.size()))
         {
-            if (m_windowSettings[idxSel].isColorMappingEnabled && idxSel < static_cast<int>(m_effectWindows.size()))
+            if (m_windowSettings[idxSel].isColorMappingEnabled)
             {
-                if (auto& wnd = m_effectWindows[idxSel]) { ApplyGlobalColorMapsToSettings(m_windowSettings[idxSel]); wnd->UpdateSettings(m_windowSettings[idxSel]); }
+                ApplyGlobalColorMapsToSettings(m_windowSettings[idxSel]);
+                UpdateSettingsForGroup(idxSel);
             }
         }
         m_isSamplingColor = false;
@@ -1571,10 +1587,7 @@ void winrt::Winvert4::implementation::MainWindow::FilterMenuItem_Click(winrt::Wi
             m_windowSettings[idx].isCustomEffectActive = true;
             memcpy(m_windowSettings[idx].colorMat, sf.mat, sizeof(sf.mat));
             memcpy(m_windowSettings[idx].colorOffset, sf.offset, sizeof(sf.offset));
-            if (idx < static_cast<int>(m_effectWindows.size()))
-            {
-                if (auto& wnd = m_effectWindows[idx]) wnd->UpdateSettings(m_windowSettings[idx]);
-            }
+            UpdateSettingsForGroup(idx);
         }
         m_keepFiltersFlyoutOpenNext = false;
         UpdateFilterDropdown();
@@ -1656,10 +1669,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterButton_Click(winr
     m_windowSettings[idx].isCustomEffectActive = true;
     memcpy(m_windowSettings[idx].colorMat, mat4, sizeof(mat4));
     memcpy(m_windowSettings[idx].colorOffset, offset, sizeof(offset));
-    if (idx < static_cast<int>(m_effectWindows.size()))
-    {
-        if (auto& wnd = m_effectWindows[idx]) wnd->UpdateSettings(m_windowSettings[idx]);
-    }
+    UpdateSettingsForGroup(idx);
     m_isPreviewActive = true;
 }
 
@@ -1691,10 +1701,7 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
     m_windowSettings[idx].isCustomEffectActive = true;
     memcpy(m_windowSettings[idx].colorMat, mat4, sizeof(mat4));
     memcpy(m_windowSettings[idx].colorOffset, offset, sizeof(offset));
-    if (idx < static_cast<int>(m_effectWindows.size()))
-    {
-        if (auto& wnd = m_effectWindows[idx]) wnd->UpdateSettings(m_windowSettings[idx]);
-    }
+    UpdateSettingsForGroup(idx);
 
     if (idx < static_cast<int>(m_hasPreviewBackup.size()) && m_hasPreviewBackup[idx])
     {
@@ -1813,14 +1820,8 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
         if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
         auto& s = m_windowSettings[idx];
         s.isColorMappingEnabled = !s.isColorMappingEnabled;
-        if (idx < static_cast<int>(m_effectWindows.size()))
-        {
-            if (auto& wnd = m_effectWindows[idx])
-            {
-                ApplyGlobalColorMapsToSettings(s);
-                wnd->UpdateSettings(s);
-            }
-        }
+        ApplyGlobalColorMapsToSettings(s);
+        UpdateSettingsForGroup(idx, s);
         UpdateUIState();
     }
 
@@ -1895,10 +1896,11 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
             int idxSel = SelectedTabIndex();
             if (idxSel >= 0 && idxSel < static_cast<int>(m_windowSettings.size()))
             {
-                if (m_windowSettings[idxSel].isColorMappingEnabled && idxSel < static_cast<int>(m_effectWindows.size()))
-                {
-                    if (auto& wnd = m_effectWindows[idxSel]) { ApplyGlobalColorMapsToSettings(m_windowSettings[idxSel]); wnd->UpdateSettings(m_windowSettings[idxSel]); }
-                }
+            if (m_windowSettings[idxSel].isColorMappingEnabled)
+            {
+                ApplyGlobalColorMapsToSettings(m_windowSettings[idxSel]);
+                UpdateSettingsForGroup(idxSel);
+            }
             }
         }
     }
@@ -1913,9 +1915,10 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
             int idxSel = SelectedTabIndex();
             if (idxSel >= 0 && idxSel < static_cast<int>(m_windowSettings.size()))
             {
-                if (m_windowSettings[idxSel].isColorMappingEnabled && idxSel < static_cast<int>(m_effectWindows.size()))
+                if (m_windowSettings[idxSel].isColorMappingEnabled)
                 {
-                    if (auto& wnd = m_effectWindows[idxSel]) { ApplyGlobalColorMapsToSettings(m_windowSettings[idxSel]); wnd->UpdateSettings(m_windowSettings[idxSel]); }
+                    ApplyGlobalColorMapsToSettings(m_windowSettings[idxSel]);
+                    UpdateSettingsForGroup(idxSel);
                 }
             }
         }
@@ -1935,9 +1938,10 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
             int idxSel = SelectedTabIndex();
             if (idxSel >= 0 && idxSel < static_cast<int>(m_windowSettings.size()))
             {
-                if (m_windowSettings[idxSel].isColorMappingEnabled && idxSel < static_cast<int>(m_effectWindows.size()))
+                if (m_windowSettings[idxSel].isColorMappingEnabled)
                 {
-                    if (auto& wnd = m_effectWindows[idxSel]) { ApplyGlobalColorMapsToSettings(m_windowSettings[idxSel]); wnd->UpdateSettings(m_windowSettings[idxSel]); }
+                    ApplyGlobalColorMapsToSettings(m_windowSettings[idxSel]);
+                    UpdateSettingsForGroup(idxSel);
                 }
             }
         }
@@ -1958,13 +1962,7 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
             m_hasPreviewBackup[idx] = true;
         }
         m_windowSettings[idx].isColorMappingEnabled = true;
-        if (idx < static_cast<int>(m_effectWindows.size()))
-        {
-            if (auto& wnd = m_effectWindows[idx])
-            {
-                wnd->UpdateSettings(m_windowSettings[idx]);
-            }
-        }
+        UpdateSettingsForGroup(idx);
         m_isPreviewActive = true;
     }
 

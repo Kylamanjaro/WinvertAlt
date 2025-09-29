@@ -115,7 +115,10 @@ namespace winrt::Winvert4::implementation
         RECT MakeRectFromPoints(POINT a, POINT b) const;
         void OnSelectionCompleted(RECT sel);
 
+        // Primary window per tab index
         std::vector<std::unique_ptr<EffectWindow>> m_effectWindows;
+        // Additional windows for the same logical region when spanning multiple monitors
+        std::vector<std::vector<std::unique_ptr<EffectWindow>>> m_effectWindowExtras;
         std::unique_ptr<OutputManager> m_outputManager;
         HWND m_mainHwnd{ nullptr };
 
@@ -189,6 +192,9 @@ namespace winrt::Winvert4::implementation
         int SelectedTabIndex();
         HWND SelectedWindowHwnd();
         void ApplyGlobalColorMapsToSettings(EffectSettings& settings);
+        // Apply current or provided settings to the primary + any extra windows for a tab index
+        void UpdateSettingsForGroup(int idx);
+        void UpdateSettingsForGroup(int idx, const EffectSettings& settings);
 
         // --- Icon Sources ---
         winrt::Microsoft::UI::Xaml::Media::ImageSource m_brightnessOnIconSource{ nullptr };
