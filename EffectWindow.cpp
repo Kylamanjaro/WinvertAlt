@@ -89,11 +89,6 @@ LRESULT CALLBACK EffectWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
     if (msg == WM_NCHITTEST) {
         return HTTRANSPARENT;
     }
-    if (msg == WM_SETCURSOR) {
-        // Ensure we never show a resize/drag cursor when hovering near the effect window
-        ::SetCursor(LoadCursorW(nullptr, IDC_ARROW));
-        return TRUE;
-    }
 
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
@@ -157,11 +152,23 @@ void EffectWindow::Show()
         sub.Region     = m_desktopRect;
         m_thread->AddSubscription(sub);
         winvert4::Log("EW: subscribed to duplication thread");
+        // Ask the duplication thread to render immediately so the window shows content without
+        // waiting for desktop activity.
+        m_thread->RequestRedraw();
+        winvert4::Log("EW: requested redraw (pre-window)");
     }
 
     // 3) Create the window and pipeline now.
     CreateAndShow();
+    winvert4::Log("EW: CreateAndShow returned");
     m_isHidden = false;
+
+    // We requested a redraw before creating the window, but the duplication
+    // thread may have attempted to render while our swapchain wasn't ready yet
+    // (m_run=false / m_swapChain=null) and thus returned early. Request one
+    // more redraw now that the window is fully initialized so the first frame
+    // presents without waiting for desktop activity.
+    if (m_thread) { winvert4::Log("EW: requested redraw (post-window)"); m_thread->RequestRedraw(); }
 }
 
 void EffectWindow::Hide()
@@ -274,6 +281,7 @@ void EffectWindow::UpdateCBs_()
 
 void EffectWindow::CreateAndShow()
 {
+    winvert4::Log("EW.CreateAndShow: begin");
     // 1) Create window and pipeline objects on this thread
     static ATOM s_atom = 0;
     if (!s_atom) {
@@ -289,19 +297,17 @@ void EffectWindow::CreateAndShow()
     const int w = m_desktopRect.right - m_desktopRect.left;
     const int h = m_desktopRect.bottom - m_desktopRect.top;
     m_hwnd = CreateWindowExW(
-        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE, // Using WS_EX_LAYERED for click-through
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT, // pass-through input
         kEffectWndClass, L"", WS_POPUP,
         m_desktopRect.left, m_desktopRect.top, w, h,
         nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (!m_hwnd) { winvert4::Log("EffectWindow::RenderThreadProc failed to create HWND"); return; }
     winvert4::Logf("EW: created HWND=%p size=(%dx%d)", (void*)m_hwnd, w, h);
 
-    // This is the key to making the window truly click-through.
-    // By setting LWA_COLORKEY, we tell Windows that mouse events should pass through
-    // the window as if it weren't there. The color key itself doesn't matter since
-    // we are rendering with DirectX, not GDI.
-    // This is more reliable than relying on WS_EX_TRANSPARENT alone for DX-rendered windows.
-    SetLayeredWindowAttributes(m_hwnd, 0, 255, LWA_COLORKEY);
+    // Make the window click-through via HTTRANSPARENT in WndProc.
+    // Use LWA_ALPHA (opaque) instead of COLORKEY to avoid the entire window
+    // becoming fully transparent when the first clear is black.
+    SetLayeredWindowAttributes(m_hwnd, 0, 255, LWA_ALPHA);
 
     // Factory
     ComPtr<IDXGIDevice> dxgiDevice;
@@ -324,6 +330,7 @@ void EffectWindow::CreateAndShow()
         winvert4::Logf("EW: CreateSwapChainForHwnd failed hr=0x%08X", hrSC);
         return;
     }
+    winvert4::Log("EW: swapchain created");
 
     // Initialize D2D/DirectWrite for FPS overlay
     if (!m_d2dFactory)
@@ -428,8 +435,29 @@ void EffectWindow::CreateAndShow()
     }
 
     ShowWindow(m_hwnd, SW_SHOWNOACTIVATE);
+    winvert4::Log("EW: ShowWindow(SW_SHOWNOACTIVATE)");
 
     m_run = true;
+
+    // Immediately present a cleared frame so the window becomes visible right away,
+    // even before the first duplication frame arrives. Use opaque alpha to avoid
+    // the layered window being fully transparent on the first Present.
+    {
+        ComPtr<ID3D11Texture2D> bb;
+        if (SUCCEEDED(m_swapChain->GetBuffer(0, IID_PPV_ARGS(&bb))) && bb)
+        {
+            ComPtr<ID3D11RenderTargetView> rtv;
+            if (SUCCEEDED(m_d3d->CreateRenderTargetView(bb.Get(), nullptr, &rtv)))
+            {
+                const float clear[4] = { 0,0,0,1 };
+                m_immediateCtx->OMSetRenderTargets(1, rtv.GetAddressOf(), nullptr);
+                m_immediateCtx->ClearRenderTargetView(rtv.Get(), clear);
+                // Present immediately without waiting for vblank on the very first frame
+                winvert4::Log("EW: first clear + Present(0,0)");
+                m_swapChain->Present(0, 0);
+            }
+        }
+    }
 
     // Prepare luminance mip resources for brightness protection
     {
@@ -465,15 +493,19 @@ void EffectWindow::CreateAndShow()
         rd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
         m_d3d->CreateTexture2D(&rd, nullptr, &m_mipReadback1x1);
     }
+    winvert4::Log("EW.CreateAndShow: end");
 }
 
 void EffectWindow::Render(ID3D11Texture2D* frame, unsigned long long lastPresentQpc)
 {
-    if (!m_run || m_isHidden || !frame || !m_swapChain) return;
+    if (!m_run) { winvert4::Log("EW.Render early exit: m_run=false"); return; }
+    if (m_isHidden) { winvert4::Log("EW.Render early exit: hidden"); return; }
+    if (!frame) { winvert4::Log("EW.Render early exit: frame=null"); return; }
+    if (!m_swapChain) { winvert4::Log("EW.Render early exit: swapchain=null"); return; }
 
     // Ensure SRV reflects current texture
     EnsureSRVLocked_(frame);
-    if (!m_srv) { return; }
+    if (!m_srv) { winvert4::Log("EW.Render early exit: SRV null"); return; }
 
     // Brightness protection: compute average luminance of the region via mipmap reduction
     if (m_settings.isBrightnessProtectionEnabled && m_mipTex && m_mipSrv && m_mipReadback1x1)
@@ -514,6 +546,7 @@ void EffectWindow::Render(ID3D11Texture2D* frame, unsigned long long lastPresent
     // Recreate RTV each frame (resize-robust)
     ComPtr<ID3D11Texture2D> backBuf;
     if (FAILED(m_swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuf)))) {
+        winvert4::Log("EW.Render: GetBuffer failed; Present passthrough");
         m_swapChain->Present(1, 0);
         return;
     }
@@ -634,6 +667,7 @@ void EffectWindow::Render(ID3D11Texture2D* frame, unsigned long long lastPresent
     }
 
     // Present blocks to vblank when sync interval = 1 (vsynced to monitor)
+    winvert4::Log("EW.Render: Present(1,0)");
     m_swapChain->Present(1, 0);
 
     // FPS calculation based on DXGI Desktop Duplication's LastPresentTime (QPC)

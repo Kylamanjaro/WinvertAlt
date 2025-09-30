@@ -818,7 +818,9 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
         // Primary window is the first split; extras are any additional splits
         auto newWindow = std::make_unique<EffectWindow>(splits[0], m_outputManager.get());
         newWindow->UpdateSettings(settings);
+        winvert4::Log("MainWindow: calling primary EffectWindow::Show()");
         newWindow->Show();
+        winvert4::Log("MainWindow: primary EffectWindow::Show() returned");
 
         // 4) Add a tab for the new window
         auto newTab = TabViewItem();
@@ -832,7 +834,9 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
         {
             auto w = std::make_unique<EffectWindow>(splits[i], m_outputManager.get());
             w->UpdateSettings(settings);
+            winvert4::Logf("MainWindow: calling extra EffectWindow::Show() #%zu", i);
             w->Show();
+            winvert4::Logf("MainWindow: extra EffectWindow::Show() #%zu returned", i);
             extras.push_back(std::move(w));
         }
 
@@ -843,6 +847,7 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
         if (!m_controlPanelShownYet)
         {
             ::ShowWindow(m_mainHwnd, SW_SHOW);
+            winvert4::Log("MainWindow: ShowWindow(SW_SHOW) control panel");
             m_controlPanelShownYet = true;
             UpdateUIState();
             SetWindowSize(360, 120);

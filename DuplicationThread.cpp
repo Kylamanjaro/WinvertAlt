@@ -199,6 +199,7 @@ void DuplicationThread::ThreadProc()
         std::unique_lock<std::mutex> lk(m_subMutex);
         m_subCv.wait(lk, [this] { return !m_isRunning || !m_subscriptions.empty(); });
         if (!m_isRunning) return;
+        winvert4::Logf("DT: subscribers available: %zu", m_subscriptions.size());
     }
 
     if (!m_output || !m_device) return;
@@ -231,6 +232,11 @@ void DuplicationThread::ThreadProc()
     texDesc.CPUAccessFlags = 0;
     texDesc.MiscFlags = 0;
     m_device->CreateTexture2D(&texDesc, nullptr, &m_fullTexture);
+    if (m_fullTexture) {
+        winvert4::Logf("DT: full-frame texture created %ux%u", texDesc.Width, texDesc.Height);
+    } else {
+        winvert4::Log("DT: full-frame texture creation FAILED");
+    }
 
     // Frame loop
     while (m_isRunning) {
@@ -243,17 +249,22 @@ void DuplicationThread::ThreadProc()
             // render using the last captured texture so changes appear immediately.
             int cnt = m_redrawCountdown.load(std::memory_order_relaxed);
             if (cnt > 0 && m_fullTexture) {
+                winvert4::Logf("DT: timeout; redraw cnt=%d using last texture", cnt);
                 std::vector<Subscription> subsCopy;
                 {
                     std::lock_guard<std::mutex> lk(m_subMutex);
                     subsCopy = m_subscriptions;
                 }
+                winvert4::Logf("DT: timeout; rendering to %zu subscribers", subsCopy.size());
                 for (auto& s : subsCopy) {
                     if (s.Subscriber) {
+                        winvert4::Logf("DT: timeout; Render -> %p", s.Subscriber);
                         static_cast<EffectWindow*>(s.Subscriber)->Render(m_fullTexture.Get(), 0ULL);
                     }
                 }
                 m_redrawCountdown.store(cnt - 1, std::memory_order_relaxed);
+            } else if (cnt > 0 && !m_fullTexture) {
+                winvert4::Log("DT: timeout; requested redraw but no fullTexture yet");
             }
             continue;
         }
@@ -268,6 +279,7 @@ void DuplicationThread::ThreadProc()
 
         if (frameTex && m_fullTexture) {
             // Copy frame into our shared texture
+            winvert4::Log("DT: frame acquired; copying to full texture");
             m_context->CopyResource(m_fullTexture.Get(), frameTex.Get());
             // Always notify subscribers so effect changes present even if captured pixels are unchanged.
         }
@@ -279,9 +291,11 @@ void DuplicationThread::ThreadProc()
                 std::lock_guard<std::mutex> lk(m_subMutex);
                 subsCopy = m_subscriptions;
             }
+            winvert4::Logf("DT: rendering to %zu subscribers; LastPresentQpc=%llu", subsCopy.size(), fi.LastPresentTime.QuadPart);
             for (auto& s : subsCopy) {
                 if (s.Subscriber) {
                     // Cast and call the new Render method
+                    winvert4::Logf("DT: Render -> %p", s.Subscriber);
                     static_cast<EffectWindow*>(s.Subscriber)->Render(m_fullTexture.Get(), fi.LastPresentTime.QuadPart);
                 }
             }
