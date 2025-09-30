@@ -186,6 +186,12 @@ void DuplicationThread::RemoveSubscriber(ISubscriber* sub)
         m_subscriptions.end());
 }
 
+void DuplicationThread::RequestRedraw()
+{
+    // Try to present effects immediately for ~32 cycles (~32ms at 1ms wait)
+    m_redrawCountdown.store(32, std::memory_order_relaxed);
+}
+
 void DuplicationThread::ThreadProc()
 {
     winvert4::Log("DT: waiting for subscribers");
@@ -230,8 +236,25 @@ void DuplicationThread::ThreadProc()
     while (m_isRunning) {
         DXGI_OUTDUPL_FRAME_INFO fi{};
         ComPtr<IDXGIResource> res;
-        HRESULT hrAcq = m_duplication->AcquireNextFrame(16, &fi, &res);
+        const UINT waitMs = (m_redrawCountdown.load(std::memory_order_relaxed) > 0) ? 1u : 16u;
+        HRESULT hrAcq = m_duplication->AcquireNextFrame(waitMs, &fi, &res);
         if (hrAcq == DXGI_ERROR_WAIT_TIMEOUT) {
+            // No new desktop frame. If a redraw was requested (settings changed),
+            // render using the last captured texture so changes appear immediately.
+            int cnt = m_redrawCountdown.load(std::memory_order_relaxed);
+            if (cnt > 0 && m_fullTexture) {
+                std::vector<Subscription> subsCopy;
+                {
+                    std::lock_guard<std::mutex> lk(m_subMutex);
+                    subsCopy = m_subscriptions;
+                }
+                for (auto& s : subsCopy) {
+                    if (s.Subscriber) {
+                        static_cast<EffectWindow*>(s.Subscriber)->Render(m_fullTexture.Get(), 0ULL);
+                    }
+                }
+                m_redrawCountdown.store(cnt - 1, std::memory_order_relaxed);
+            }
             continue;
         }
         if (FAILED(hrAcq)) {
@@ -246,17 +269,7 @@ void DuplicationThread::ThreadProc()
         if (frameTex && m_fullTexture) {
             // Copy frame into our shared texture
             m_context->CopyResource(m_fullTexture.Get(), frameTex.Get());
-
-            // Probe a center patch and guard zero frames
-            RECT c = CenterRect(texDesc.Width, texDesc.Height, 128, 128);
-            uint64_t sum=0; uint8_t vmin=255, vmax=0;
-            if (ProbeTexturePatch(m_device.Get(), m_context.Get(), m_fullTexture.Get(), c, sum, vmin, vmax)) {
-                if (sum == 0) {
-                    winvert4::Log("DT: zero-pixel frame detected; skipping notify");
-                    m_duplication->ReleaseFrame();
-                    continue;
-                }
-            }
+            // Always notify subscribers so effect changes present even if captured pixels are unchanged.
         }
 
         // Render to all subscribers on this thread
@@ -272,6 +285,7 @@ void DuplicationThread::ThreadProc()
                     static_cast<EffectWindow*>(s.Subscriber)->Render(m_fullTexture.Get(), fi.LastPresentTime.QuadPart);
                 }
             }
+            m_redrawCountdown.store(0, std::memory_order_relaxed);
         }
 
         m_duplication->ReleaseFrame();

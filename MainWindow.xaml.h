@@ -218,6 +218,10 @@ namespace winrt::Winvert4::implementation
         bool m_isSamplingColor{ false };
         void StartColorSample();
         void OnColorSampled(POINT ptClient);
+
+        // --- UI reentrancy guards ---
+        bool m_isProgrammaticColorPickerChange{ false };
+        bool m_isUpdatingColorMapUI{ false };
     };
 }
 

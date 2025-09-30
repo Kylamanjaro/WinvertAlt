@@ -43,6 +43,9 @@ namespace {
 
         struct PSIn { float4 pos:SV_Position; float2 uv:TEXCOORD0; };
 
+        // Utility: luminance helper
+        float Luma(float3 x) { return dot(x, float3(0.299, 0.587, 0.114)); }
+
         float4 main(PSIn i) : SV_Target {
           float4 c = srcTex.Sample(samp0, i.uv);
           float3 result = c.rgb;
@@ -53,15 +56,28 @@ namespace {
           if (enableMatrix != 0) { float4 cr = mul(float4(result,1.0), colorMat); result = cr.rgb + colorOffset.rgb; }
           if (enableColorMap != 0 && colorMapCount > 0) {
               float3 rgb = result;
+              float maxW = 0.0;
+              float3 best = rgb;
               [loop]
               for (uint i = 0; i < colorMapCount; ++i) {
                   float3 src = colorMapSrc[i].xyz;
-                  float t2 = colorMapSrc[i].w;
+                  float t2 = colorMapSrc[i].w;              // tolerance^2 in RGB space
                   float3 d = rgb - src;
                   float dist2 = dot(d,d);
-                  if (dist2 <= t2) { rgb = colorMapDst[i].xyz; break; }
+                  if (dist2 <= t2 && t2 > 1e-12) {
+                      // Softly steer nearby colors toward the destination color, preserving original luminance
+                      float3 dst = colorMapDst[i].xyz;
+                      float lOrig = Luma(rgb);
+                      float lDst  = max(Luma(dst), 1e-5);
+                      float3 mapped = dst * (lOrig / lDst);
+                      // Blend weight with quadratic falloff without sqrt for performance
+                      float w = saturate(1.0 - dist2 / t2);
+                      // Slightly sharpen the falloff
+                      w = w * w;
+                      if (w > maxW) { maxW = w; best = lerp(rgb, saturate(mapped), w); }
+                  }
               }
-              result = rgb;
+              if (maxW > 0.0) result = best;
           }
           return float4(result, 1.0);
         })";
@@ -102,6 +118,8 @@ void EffectWindow::OnFrameReady(ComPtr<ID3D11Texture2D>)
 void EffectWindow::UpdateSettings(const EffectSettings& settings)
 {
     m_settings = settings;
+    // Request an immediate redraw so changes are visible without desktop activity
+    if (m_thread) m_thread->RequestRedraw();
 }
 
 void EffectWindow::Show()
@@ -234,16 +252,18 @@ void EffectWindow::UpdateCBs_()
     uint32_t count = 0;
     if (pcb.enableColorMap)
     {
-        count = static_cast<uint32_t>(std::min<size_t>(m_settings.colorMaps.size(), EffectWindow::kMaxColorMaps));
-        for (uint32_t i = 0; i < count; ++i)
+        // Copy only enabled mappings to the GPU list to honor per-row toggles
+        for (size_t i = 0; i < m_settings.colorMaps.size() && count < EffectWindow::kMaxColorMaps; ++i)
         {
             const auto& e = m_settings.colorMaps[i];
+            if (!e.enabled) continue;
             float sr = e.srcR / 255.0f, sg = e.srcG / 255.0f, sb = e.srcB / 255.0f;
             float dr = e.dstR / 255.0f, dg = e.dstG / 255.0f, db = e.dstB / 255.0f;
             float t  = std::max(0, std::min(255, e.tolerance)) / 255.0f;
-            float t2 = t * t;
-            pcb.colorMapSrc[i][0] = sr; pcb.colorMapSrc[i][1] = sg; pcb.colorMapSrc[i][2] = sb; pcb.colorMapSrc[i][3] = t2;
-            pcb.colorMapDst[i][0] = dr; pcb.colorMapDst[i][1] = dg; pcb.colorMapDst[i][2] = db; pcb.colorMapDst[i][3] = 0.0f;
+            float t2 = t * t; // store squared radius to avoid sqrt in shader
+            pcb.colorMapSrc[count][0] = sr; pcb.colorMapSrc[count][1] = sg; pcb.colorMapSrc[count][2] = sb; pcb.colorMapSrc[count][3] = t2;
+            pcb.colorMapDst[count][0] = dr; pcb.colorMapDst[count][1] = dg; pcb.colorMapDst[count][2] = db; pcb.colorMapDst[count][3] = 0.0f;
+            ++count;
         }
     }
     pcb.colorMapCount = count;

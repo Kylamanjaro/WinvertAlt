@@ -1149,7 +1149,10 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
     void winrt::Winvert4::implementation::MainWindow::UpdateSettingsForGroup(int idx)
     {
         if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
-    UpdateSettingsForGroup(idx);
+        if (idx < static_cast<int>(m_effectWindows.size()))
+        {
+            if (auto& wnd = m_effectWindows[idx]) wnd->UpdateSettings(m_windowSettings[idx]);
+        }
         if (idx < static_cast<int>(m_effectWindowExtras.size()))
         {
             for (auto& ew : m_effectWindowExtras[idx])
@@ -1862,6 +1865,7 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
 
     void winrt::Winvert4::implementation::MainWindow::ColorMapEnable_Toggled(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
+        if (m_isUpdatingColorMapUI) return;
         auto cb = sender.try_as<Controls::CheckBox>();
         if (!cb) return;
         auto tag = cb.Tag();
@@ -1871,6 +1875,16 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
         if (row >= 0 && row < static_cast<int>(maps.size()))
         {
             maps[row].enabled = cb.IsChecked().GetBoolean();
+            // Live push if mapping is enabled on the selected window
+            int idxSel = SelectedTabIndex();
+            if (idxSel >= 0 && idxSel < static_cast<int>(m_windowSettings.size()))
+            {
+                if (m_windowSettings[idxSel].isColorMappingEnabled)
+                {
+                    ApplyGlobalColorMapsToSettings(m_windowSettings[idxSel]);
+                    UpdateSettingsForGroup(idxSel);
+                }
+            }
         }
     }
 
@@ -1886,7 +1900,7 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
             auto root = this->Content().try_as<FrameworkElement>();
             if (root) picker = root.FindName(L"ColorMapPicker").try_as<Controls::ColorPicker>();
         }
-        if (picker) picker.Color(c);
+        if (picker) { m_isProgrammaticColorPickerChange = true; picker.Color(c); m_isProgrammaticColorPickerChange = false; }
     }
 
     void winrt::Winvert4::implementation::MainWindow::ColorMapDestSwatch_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -1901,24 +1915,54 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
             auto root = this->Content().try_as<FrameworkElement>();
             if (root) picker = root.FindName(L"ColorMapPicker").try_as<Controls::ColorPicker>();
         }
-        if (picker) picker.Color(c);
+        if (picker) { m_isProgrammaticColorPickerChange = true; picker.Color(c); m_isProgrammaticColorPickerChange = false; }
     }
 
     void winrt::Winvert4::implementation::MainWindow::ColorMapPicker_ColorChanged(Controls::ColorPicker const&, Controls::ColorChangedEventArgs const& args)
     {
+        if (m_isProgrammaticColorPickerChange || m_isUpdatingColorMapUI) return; // ignore programmatic/UI rebuild
         auto& maps = m_globalColorMaps;
         int row = m_selectedColorMapRowIndex;
         if (row < 0 || row >= static_cast<int>(maps.size())) return;
         auto c = args.NewColor();
         if (m_selectedSwatchIsSource)
         {
+            if (maps[row].srcR == c.R && maps[row].srcG == c.G && maps[row].srcB == c.B) return;
             maps[row].srcR = c.R; maps[row].srcG = c.G; maps[row].srcB = c.B;
         }
         else
         {
+            if (maps[row].dstR == c.R && maps[row].dstG == c.G && maps[row].dstB == c.B) return;
             maps[row].dstR = c.R; maps[row].dstG = c.G; maps[row].dstB = c.B;
         }
-        RefreshColorMapList();
+        // Update only the affected swatch button's background to avoid rebuilding the whole list
+        {
+            Controls::StackPanel listPanel{ nullptr };
+            if (auto root = this->Content().try_as<FrameworkElement>())
+                listPanel = root.FindName(L"ColorMapListPanel").try_as<Controls::StackPanel>();
+            if (listPanel && row >= 0 && row < static_cast<int>(listPanel.Children().Size()))
+            {
+                auto rowGrid = listPanel.Children().GetAt(row).try_as<Controls::Grid>();
+                if (rowGrid)
+                {
+                    int targetCol = m_selectedSwatchIsSource ? 1 : 3;
+                    for (auto child : rowGrid.Children())
+                    {
+                        auto btn = child.try_as<Controls::Button>();
+                        if (!btn) continue;
+                        int col = Controls::Grid::GetColumn(btn);
+                        if (col == targetCol)
+                        {
+                            Media::SolidColorBrush brush;
+                            winrt::Windows::UI::Color cc{}; cc.A = 255; cc.R = c.R; cc.G = c.G; cc.B = c.B;
+                            brush.Color(cc);
+                            btn.Background(brush);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
         // Push live update if mapping is enabled for the selected window
         {
             int idxSel = SelectedTabIndex();
@@ -1935,9 +1979,12 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
 
     void winrt::Winvert4::implementation::MainWindow::ColorMapTolerance_ValueChanged(Controls::NumberBox const& sender, Controls::NumberBoxValueChangedEventArgs const& e)
     {
+        if (m_isUpdatingColorMapUI) return;
         int row = -1; auto tagObj = sender.Tag(); if (tagObj) row = unbox_value<int>(tagObj);
         auto& maps = m_globalColorMaps; if (row < 0 || row >= static_cast<int>(maps.size())) return;
-        maps[row].tolerance = static_cast<int>(e.NewValue());
+        int newTol = static_cast<int>(e.NewValue());
+        if (maps[row].tolerance == newTol) return;
+        maps[row].tolerance = newTol;
         // Push live update if mapping is enabled for the selected window
         {
             int idxSel = SelectedTabIndex();

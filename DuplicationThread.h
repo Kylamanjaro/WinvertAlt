@@ -13,6 +13,7 @@ public:
 
     void AddSubscription(const Subscription& sub);
     void RemoveSubscriber(ISubscriber* sub);
+    void RequestRedraw();
     const RECT& GetOutputRect() const { return m_outputRect; }
     ID3D11Device* GetDevice() { return m_device.Get(); }
 
@@ -33,4 +34,6 @@ private:
     std::condition_variable m_subCv;
     // Shared full-frame texture for this output (sampled by all subscribers)
     ::Microsoft::WRL::ComPtr<ID3D11Texture2D> m_fullTexture;
+    // Countdown of forced redraw attempts when no new desktop frames arrive.
+    std::atomic<int> m_redrawCountdown{ 0 };
 };
