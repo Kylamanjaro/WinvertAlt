@@ -22,7 +22,6 @@ namespace winrt::Winvert4::implementation
         // --- XAML Event Handlers ---
         void BrightnessProtection_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void InvertEffect_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
-        void GrayscaleEffect_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void AddWindow_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void RemoveWindow_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void HideAllWindows_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
@@ -147,11 +146,15 @@ namespace winrt::Winvert4::implementation
         UINT m_hotkeyInvertMod{ MOD_WIN | MOD_SHIFT };
         UINT m_hotkeyInvertVk{ 'I' };
         UINT m_hotkeyGrayscaleMod{ MOD_WIN | MOD_SHIFT };
-        UINT m_hotkeyGrayscaleVk{ 'G' };
+        UINT m_hotkeyGrayscaleVk{ 'F' };
         UINT m_hotkeyRemoveMod{ MOD_WIN | MOD_SHIFT };
         UINT m_hotkeyRemoveVk{ 'R' };
 
-        enum class PendingEffect { None, Invert, Grayscale };
+        enum class PendingEffect { None, Invert, Grayscale, Favorite };
+
+        // Favorite filter index (tracked independently of UI accessor to avoid header deps)
+        int FavoriteFilterIndex() const;
+        int m_favoriteFilterIndex{ -1 };
         PendingEffect m_pendingEffect{ PendingEffect::None };
 
         void RegisterAllHotkeys();

@@ -39,7 +39,6 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <Button x:Name="InvertEffectButton" Grid.Column="0" Click="InvertEffect_Click" Width="36" Height="36" Padding="0" ToolTipService.ToolTip="Toggle Invert">
@@ -48,20 +47,17 @@
                 <Button x:Name="BrightnessProtectionButton" Grid.Column="1" Click="BrightnessProtection_Click" Width="36" Height="36" Padding="0" ToolTipService.ToolTip="Brightness Protection">
                     <Image x:Name="BrightnessProtectionImage" Width="26" Height="26" IsHitTestVisible="False"/>
                 </Button>
-                <Button x:Name="GrayscaleEffectButton" Grid.Column="2" Click="GrayscaleEffect_Click" Width="36" Height="36" Padding="0" ToolTipService.ToolTip="Toggle Grayscale">
-                    <Image x:Name="GrayscaleEffectImage" Width="26" Height="26" IsHitTestVisible="False"/>
-                </Button>
-                <Button x:Name="FiltersDropDownButton" Grid.Column="3" Width="36" Height="36" Padding="0" ToolTipService.ToolTip="Select Custom Filter">
+                <Button x:Name="FiltersDropDownButton" Grid.Column="2" Width="36" Height="36" Padding="0" ToolTipService.ToolTip="Select Custom Filter">
                     <Image Source="Assets/filter.svg" Width="26" Height="26" IsHitTestVisible="False"/>
                     <Button.Flyout>
                         <MenuFlyout x:Name="FiltersMenuFlyout"/>
                     </Button.Flyout>
                 </Button>
-                <Button x:Name="HideAllWindowsButton" Grid.Column="4" Click="HideAllWindows_Click" Width="36" Height="36" Padding="0" ToolTipService.ToolTip="Hide/Show Region">
+                <Button x:Name="HideAllWindowsButton" Grid.Column="3" Click="HideAllWindows_Click" Width="36" Height="36" Padding="0" ToolTipService.ToolTip="Hide/Show Region">
                     <Image x:Name="HideAllWindowsImage" Width="26" Height="26" IsHitTestVisible="False"/>
                 </Button>
                 <!-- Mapping toggle button -->
-                <Button x:Name="ColorMappingToggleButton" Grid.Column="5" Click="ColorMappingToggle_Click" Width="36" Height="36" Padding="0" ToolTipService.ToolTip="Toggle Color Mapping">
+                <Button x:Name="ColorMappingToggleButton" Grid.Column="4" Click="ColorMappingToggle_Click" Width="36" Height="36" Padding="0" ToolTipService.ToolTip="Toggle Color Mapping">
                     <TextBlock Text="M" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Button>
             </Grid>
@@ -171,7 +167,7 @@
                                         <TextBox x:Name="InvertHotkeyTextBox" Grid.Row="0" Grid.Column="0" IsReadOnly="True" />
                                         <Button x:Name="RebindInvertHotkeyButton" Grid.Row="0" Grid.Column="1" Content="Rebind Invert/Add" Click="RebindInvertHotkeyButton_Click"/>
                                         <TextBox x:Name="GrayscaleHotkeyTextBox" Grid.Row="1" Grid.Column="0" IsReadOnly="True" />
-                                        <Button x:Name="RebindGrayscaleHotkeyButton" Grid.Row="1" Grid.Column="1" Content="Rebind Grayscale/Add" Click="RebindGrayscaleHotkeyButton_Click"/>
+                                        <Button x:Name="RebindGrayscaleHotkeyButton" Grid.Row="1" Grid.Column="1" Content="Rebind Favorite/Add" Click="RebindGrayscaleHotkeyButton_Click"/>
                                         <TextBox x:Name="RemoveHotkeyTextBox" Grid.Row="2" Grid.Column="0" IsReadOnly="True" />
                                         <Button x:Name="RebindRemoveHotkeyButton" Grid.Row="2" Grid.Column="1" Content="Rebind Remove Last" Click="RebindRemoveHotkeyButton_Click"/>
                                     </Grid>

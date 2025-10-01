@@ -87,8 +87,6 @@ namespace winrt::Winvert4::implementation
         m_showIconSource = SvgImageSource(Uri(L"ms-appx:///Assets/show.svg"));
         m_invertOnIconSource = SvgImageSource(Uri(L"ms-appx:///Assets/invert_on.svg"));
         m_invertOffIconSource = SvgImageSource(Uri(L"ms-appx:///Assets/invert_off.svg"));
-        m_grayscaleOnIconSource = SvgImageSource(Uri(L"ms-appx:///Assets/grayscale_on.svg"));
-        m_grayscaleOffIconSource = SvgImageSource(Uri(L"ms-appx:///Assets/grayscale_off.svg"));
 
         // Keep the filters flyout open while toggling items
         if (auto flyout = FiltersMenuFlyout())
@@ -99,6 +97,127 @@ namespace winrt::Winvert4::implementation
         SetWindowSubclass(m_mainHwnd, &MainWindow::WindowSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
 
         RegisterAllHotkeys();
+
+        // Populate default filter presets if none exist yet
+        if (m_savedFilters.empty())
+        {
+            auto add = [&](const wchar_t* name, const float m[16], const float off[4])
+            {
+                SavedFilter sf{}; sf.name = name;
+                memcpy(sf.mat, m, sizeof(sf.mat));
+                memcpy(sf.offset, off, sizeof(sf.offset));
+                m_savedFilters.push_back(sf);
+            };
+
+            const float OFF0[4] = {0,0,0,0};
+
+            // Grayscale (luma)
+            const float M_GRAY[16] = {
+                0.3f,0.3f,0.3f,0,
+                0.6f,0.6f,0.6f,0,
+                0.1f,0.1f,0.1f,0,
+                0,0,0,1
+            };
+            add(L"Grayscale", M_GRAY, OFF0);
+
+            // Sepia
+            const float M_SEPIA[16] = {
+                0.393f,0.769f,0.189f,0,
+                0.349f,0.686f,0.168f,0,
+                0.272f,0.534f,0.131f,0,
+                0,0,0,1
+            };
+            add(L"Sepia", M_SEPIA, OFF0);
+
+            // Warm (mild)
+            const float M_WARM[16] = {
+                1.10f,0.00f,0.00f,0,
+                0.00f,1.00f,0.00f,0,
+                0.00f,0.00f,0.90f,0,
+                0,0,0,1
+            };
+            add(L"Warm", M_WARM, OFF0);
+
+            // Cool (mild)
+            const float M_COOL[16] = {
+                0.90f,0.00f,0.00f,0,
+                0.00f,1.00f,0.00f,0,
+                0.00f,0.00f,1.10f,0,
+                0,0,0,1
+            };
+            add(L"Cool", M_COOL, OFF0);
+
+            // Night Shift (reduce blue)
+            const float M_NIGHT[16] = {
+                1.00f,0.00f,0.00f,0,
+                0.00f,0.92f,0.00f,0,
+                0.00f,0.00f,0.70f,0,
+                0,0,0,1
+            };
+            add(L"Night Shift", M_NIGHT, OFF0);
+
+            // Contrast +20% (about 1.2x around 0.5)
+            const float M_CONTRAST[16] = {
+                1.20f,0,0,0,
+                0,1.20f,0,0,
+                0,0,1.20f,0,
+                0,0,0,1
+            };
+            const float OFF_CONTRAST[4] = { -0.10f, -0.10f, -0.10f, 0 };
+            add(L"Contrast +20%", M_CONTRAST, OFF_CONTRAST);
+
+            // Saturation +50%
+            const float M_SAT_P50[16] = {
+                1.3505f,-0.2935f,-0.0570f,0,
+               -0.1495f, 1.2065f,-0.0570f,0,
+               -0.1495f,-0.2935f, 1.4430f,0,
+                0,0,0,1
+            };
+            add(L"Saturation +50%", M_SAT_P50, OFF0);
+
+            // Hue Rotate 30° (approximate)
+            const float M_HUE_30[16] = {
+                0.7875f,-0.2615f, 0.4736f,0,
+                0.1000f, 1.0310f,-0.1319f,0,
+               -0.3650f, 0.4535f, 0.9110f,0,
+                0,0,0,1
+            };
+            add(L"Hue +30°", M_HUE_30, OFF0);
+
+            // Color Blindness Simulation (Protanopia)
+            const float M_PROT[16] = {
+                0.152286f, 1.052583f,-0.204868f,0,
+                0.114503f, 0.786281f, 0.099216f,0,
+               -0.003882f,-0.048116f, 1.051998f,0,
+                0,0,0,1
+            };
+            add(L"Protanopia (sim)", M_PROT, OFF0);
+
+            // Deuteranopia
+            const float M_DEUT[16] = {
+                0.367322f, 0.860646f,-0.227968f,0,
+                0.280085f, 0.672501f, 0.047413f,0,
+               -0.011820f, 0.042940f, 0.968881f,0,
+                0,0,0,1
+            };
+            add(L"Deuteranopia (sim)", M_DEUT, OFF0);
+
+            // Tritanopia
+            const float M_TRIT[16] = {
+                1.255528f,-0.076749f,-0.178779f,0,
+               -0.078411f, 0.930809f, 0.147602f,0,
+                0.004733f, 0.691367f, 0.303900f,0,
+                0,0,0,1
+            };
+            add(L"Tritanopia (sim)", M_TRIT, OFF0);
+
+            // Set default favorite to first preset
+            m_favoriteFilterIndex = 0;
+
+            // Refresh UI
+            UpdateSavedFiltersCombo();
+            UpdateFilterDropdown();
+        }
 
         // Hide the control panel until the first selection creates a window.
         // We will show it in OnSelectionCompleted() once a region is added.
@@ -159,16 +278,7 @@ namespace winrt::Winvert4::implementation
         UpdateSettingsForGroup(idx, s);
     }
 
-    void winrt::Winvert4::implementation::MainWindow::GrayscaleEffect_Click(IInspectable const&, RoutedEventArgs const&)
-    {
-        int idx = SelectedTabIndex();
-        if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return; // NOLINT(bugprone-branch-clone)
-        auto& s = m_windowSettings[idx];
-        s.isGrayscaleEffectEnabled = !s.isGrayscaleEffectEnabled;
-        UpdateUIState();
-        ApplyGlobalColorMapsToSettings(s);
-        UpdateSettingsForGroup(idx, s);
-    }
+    // GrayscaleEffect_Click removed: grayscale is available as a Filters preset
 
     void winrt::Winvert4::implementation::MainWindow::AddWindow_Click(IInspectable const&, RoutedEventArgs const&)
     {
@@ -607,7 +717,7 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
     void winrt::Winvert4::implementation::MainWindow::RebindGrayscaleHotkeyButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
         m_rebindingState = RebindingState::Grayscale;
-        RebindStatusText().Text(L"Press key combo for Grayscale/Add. ESC to cancel.");
+        RebindStatusText().Text(L"Press key combo for Favorite Filter/Add. ESC to cancel.");
         RebindInvertHotkeyButton().IsEnabled(true);
         RebindGrayscaleHotkeyButton().IsEnabled(false);
         RebindRemoveHotkeyButton().IsEnabled(true);
@@ -651,7 +761,7 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
 
     void winrt::Winvert4::implementation::MainWindow::OnGrayscaleHotkeyPressed()
     {
-        m_pendingEffect = PendingEffect::Grayscale;
+        m_pendingEffect = PendingEffect::Favorite;
         StartScreenSelection();
     }
 
@@ -800,9 +910,17 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
         {
             settings.isInvertEffectEnabled = true;
         }
-        else if (m_pendingEffect == PendingEffect::Grayscale)
+        
+        else if (m_pendingEffect == PendingEffect::Favorite)
         {
-            settings.isGrayscaleEffectEnabled = true;
+            int fav = FavoriteFilterIndex();
+            if (fav >= 0 && fav < static_cast<int>(m_savedFilters.size()))
+            {
+                auto& sf = m_savedFilters[fav];
+                settings.isCustomEffectActive = true;
+                memcpy(settings.colorMat, sf.mat, sizeof(sf.mat));
+                memcpy(settings.colorOffset, sf.offset, sizeof(sf.offset));
+            }
         }
         settings.showFpsOverlay = m_showFpsOverlay;
         settings.brightnessThreshold = m_brightnessThreshold;
@@ -1084,14 +1202,14 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
         }
         if (auto img = BrightnessProtectionImage()) img.Source(current.isBrightnessProtectionEnabled ? m_brightnessOnIconSource : m_brightnessOffIconSource);
         if (auto img = InvertEffectImage()) img.Source(current.isInvertEffectEnabled ? m_invertOnIconSource : m_invertOffIconSource);
-        if (auto img = GrayscaleEffectImage()) img.Source(current.isGrayscaleEffectEnabled ? m_grayscaleOnIconSource : m_grayscaleOffIconSource);
+        //if (auto img = GrayscaleEffectImage()) img.Source(current.isGrayscaleEffectEnabled ? m_grayscaleOnIconSource : m_grayscaleOffIconSource);
         bool curHidden = (idx >= 0 && idx < static_cast<int>(m_windowHidden.size())) ? m_windowHidden[idx] : false;
         if (auto img = HideAllWindowsImage()) img.Source(curHidden ? m_showIconSource : m_hideIconSource);
 
         if (auto btn = HideAllWindowsButton()) btn.IsEnabled(hasWindows);
         if (auto btn = BrightnessProtectionButton()) btn.IsEnabled(hasWindows);
         if (auto btn = InvertEffectButton()) btn.IsEnabled(hasWindows);
-        if (auto btn = GrayscaleEffectButton()) btn.IsEnabled(hasWindows);
+        //if (auto btn = GrayscaleEffectButton()) btn.IsEnabled(hasWindows);
         if (auto btn = FiltersDropDownButton()) btn.IsEnabled(hasWindows);
 
         bool showEmptyPrompt = (!hasWindows) && m_hasEverHadWindows && m_lastRemovalViaUI;
@@ -1560,6 +1678,7 @@ void winrt::Winvert4::implementation::MainWindow::SavedFiltersComboBox_Selection
     int sel = combo.SelectedIndex();
     if (sel < 0 || sel >= static_cast<int>(m_savedFilters.size())) return;
 
+    m_favoriteFilterIndex = sel;
     auto& sf = m_savedFilters[sel];
     auto grid = FilterMatrixGrid();
     if (!grid) return;
@@ -1600,32 +1719,54 @@ void winrt::Winvert4::implementation::MainWindow::FilterMenuItem_Click(winrt::Wi
         int idx = SelectedTabIndex();
         if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
         {
-            //if (static_cast<int>(m_tabFilterSelections.size()) <= idx)
-            //{
-            //    m_tabFilterSelections.resize(idx + 1);
-            //}
-            //m_tabFilterSelections[idx].assign(m_savedFilters.size(), false);
             m_windowSettings[idx].isCustomEffectActive = false;
-            //ApplyCompositeCustomFiltersForTab(idx);
+            float I[16] = {1,0,0,0,  0,1,0,0,  0,0,1,0,  0,0,0,1};
+            float Z[4]  = {0,0,0,0};
+            memcpy(m_windowSettings[idx].colorMat, I, sizeof(I));
+            memcpy(m_windowSettings[idx].colorOffset, Z, sizeof(Z));
+            UpdateSettingsForGroup(idx);
         }
         m_keepFiltersFlyoutOpenNext = false; // allow close
         UpdateFilterDropdown();
         return;
     }
 
-    // Apply saved filter by index (single selection), close flyout
+    // Apply saved filter by index; compose with existing matrix to allow stacking
     if (tagIndex >= 0 && tagIndex < static_cast<int>(m_savedFilters.size()))
     {
         int idx = SelectedTabIndex();
         if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
         {
             auto& sf = m_savedFilters[tagIndex];
+            // Current
+            float Mc[16]; memcpy(Mc, m_windowSettings[idx].colorMat, sizeof(Mc));
+            float Oc[4];  memcpy(Oc, m_windowSettings[idx].colorOffset, sizeof(Oc));
+            // Selected
+            float Ms[16]; memcpy(Ms, sf.mat, sizeof(Ms));
+            float Os[4];  memcpy(Os, sf.offset, sizeof(Os));
+            // Compose: M' = Ms * Mc; O' = Ms * Oc + Os
+            float Mnew[16];
+            for (int r = 0; r < 4; ++r)
+            {
+                for (int c = 0; c < 4; ++c)
+                {
+                    Mnew[r*4+c] = Ms[r*4+0]*Mc[0*4+c] + Ms[r*4+1]*Mc[1*4+c] + Ms[r*4+2]*Mc[2*4+c] + Ms[r*4+3]*Mc[3*4+c];
+                }
+            }
+            float Otmp[4];
+            for (int i = 0; i < 4; ++i)
+            {
+                Otmp[i] = Ms[i*4+0]*Oc[0] + Ms[i*4+1]*Oc[1] + Ms[i*4+2]*Oc[2] + Ms[i*4+3]*Oc[3];
+            }
+            float Onew[4] = { Otmp[0] + Os[0], Otmp[1] + Os[1], Otmp[2] + Os[2], Otmp[3] + Os[3] };
+
             m_windowSettings[idx].isCustomEffectActive = true;
-            memcpy(m_windowSettings[idx].colorMat, sf.mat, sizeof(sf.mat));
-            memcpy(m_windowSettings[idx].colorOffset, sf.offset, sizeof(sf.offset));
+            memcpy(m_windowSettings[idx].colorMat, Mnew, sizeof(Mnew));
+            memcpy(m_windowSettings[idx].colorOffset, Onew, sizeof(Onew));
             UpdateSettingsForGroup(idx);
         }
-        m_keepFiltersFlyoutOpenNext = false;
+        // Keep open to allow stacking multiple selections
+        m_keepFiltersFlyoutOpenNext = true;
         UpdateFilterDropdown();
     }
 }
@@ -1805,7 +1946,7 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
 
             // Arrow
             Controls::TextBlock arrow{};
-            arrow.Text(L"→");
+            arrow.Text(L"â†’");
             arrow.VerticalAlignment(VerticalAlignment::Center);
             arrow.HorizontalAlignment(HorizontalAlignment::Center);
             Controls::Grid::SetColumn(arrow, 2);
@@ -2055,4 +2196,11 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
     }
 
 
+
+
+
+int winrt::Winvert4::implementation::MainWindow::FavoriteFilterIndex() const
+{
+    return m_favoriteFilterIndex;
+}
 

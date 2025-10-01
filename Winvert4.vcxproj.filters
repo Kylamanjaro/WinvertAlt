@@ -204,19 +204,10 @@
     <Media Include="Assets\add.svg">
       <Filter>Assets</Filter>
     </Media>
-    <Media Include="Assets\filter.svg">
-      <Filter>Assets</Filter>
-    </Media>
     <Media Include="Assets\glasses_off.svg">
       <Filter>Assets</Filter>
     </Media>
     <Media Include="Assets\glasses_on.svg">
-      <Filter>Assets</Filter>
-    </Media>
-    <Media Include="Assets\grayscale_off.svg">
-      <Filter>Assets</Filter>
-    </Media>
-    <Media Include="Assets\grayscale_on.svg">
       <Filter>Assets</Filter>
     </Media>
     <Media Include="Assets\hide.svg">
@@ -235,6 +226,9 @@
       <Filter>Assets</Filter>
     </Media>
     <Media Include="Assets\show.svg">
+      <Filter>Assets</Filter>
+    </Media>
+    <Media Include="Assets\filter.svg">
       <Filter>Assets</Filter>
     </Media>
   </ItemGroup>

@@ -51,7 +51,8 @@ namespace {
           float3 result = c.rgb;
           if (enableInvert) { result = 1.0 - result; }
           if (enableGrayscale) {
-              result = dot(result, float3(0.299, 0.587, 0.114));
+              float g = dot(result, float3(0.299, 0.587, 0.114));
+              result = float3(g, g, g);
           }
           if (enableMatrix != 0) { float4 cr = mul(float4(result,1.0), colorMat); result = cr.rgb + colorOffset.rgb; }
           if (enableColorMap != 0 && colorMapCount > 0) {
