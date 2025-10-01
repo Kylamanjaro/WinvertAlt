@@ -108,8 +108,6 @@
                                     </Grid>
                                 </Expander.Header>
                                 <StackPanel Spacing="8" Padding="8,4,0,8" HorizontalAlignment="Left">
-                                    <TextBlock Text="Activation delay (frames)"/>
-                                    <NumberBox x:Name="BrightnessDelayNumberBox" Minimum="1" Maximum="60" Value="1" SpinButtonPlacementMode="Compact" ValueChanged="BrightnessDelayNumberBox_ValueChanged"/>
                                     <TextBlock Text="Target pixels for downsample (≈)"/>
                                     <NumberBox x:Name="DownsampleTargetPixelsNumberBox" Minimum="16" Maximum="4096" Value="256" SmallChange="16" LargeChange="64" SpinButtonPlacementMode="Compact" ValueChanged="DownsampleTargetPixelsNumberBox_ValueChanged"/>
                                 </StackPanel>

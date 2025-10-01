@@ -258,9 +258,6 @@ namespace winrt::Winvert4::implementation
         if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
         auto& s = m_windowSettings[idx];
         s.isBrightnessProtectionEnabled = !s.isBrightnessProtectionEnabled;
-        // Sync current global brightness settings into this window
-        s.brightnessThreshold = m_brightnessThreshold;
-        s.brightnessProtectionDelay = m_brightnessProtectionDelay;
         UpdateUIState();
         // Push to all effect windows in the group immediately
         ApplyGlobalColorMapsToSettings(s);
@@ -661,20 +658,6 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
         }
     }
 
-    void winrt::Winvert4::implementation::MainWindow::BrightnessDelayNumberBox_ValueChanged(NumberBox const&, NumberBoxValueChangedEventArgs const& args)
-    {
-        m_brightnessProtectionDelay = static_cast<int>(args.NewValue());
-        // Apply to all windows that have brightness protection enabled
-        for (size_t i = 0; i < m_windowSettings.size(); ++i)
-        {
-            if (m_windowSettings[i].isBrightnessProtectionEnabled)
-            {
-                m_windowSettings[i].brightnessProtectionDelay = m_brightnessProtectionDelay;
-                UpdateSettingsForGroup(static_cast<int>(i));
-            }
-        }
-    }
-
 
     void winrt::Winvert4::implementation::MainWindow::DownsampleTargetPixelsNumberBox_ValueChanged(NumberBox const&, NumberBoxValueChangedEventArgs const& args)
     {
@@ -923,8 +906,6 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
             }
         }
         settings.showFpsOverlay = m_showFpsOverlay;
-        settings.brightnessThreshold = m_brightnessThreshold;
-        settings.brightnessProtectionDelay = m_brightnessProtectionDelay;
         m_windowSettings.push_back(settings);
         m_pendingEffect = PendingEffect::None; // Reset for next time
 
@@ -2240,5 +2221,3 @@ int winrt::Winvert4::implementation::MainWindow::FavoriteFilterIndex() const
 {
     return m_favoriteFilterIndex;
 }
-
-

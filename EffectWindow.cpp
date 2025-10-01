@@ -541,11 +541,10 @@ void EffectWindow::Render(ID3D11Texture2D* frame, unsigned long long lastPresent
             m_avgLuma = r * 0.299f + g * 0.587f + b * 0.114f;
             m_immediateCtx->Unmap(m_mipReadback1x1.Get(), 0);
 
-            // Choose effective invert to minimize luminance w.r.t threshold
-            float thr = (m_settings.brightnessThreshold / 255.0f);
-            // If above threshold, prefer inverted; else prefer original
-            bool invertPref = (m_avgLuma > thr);
-            m_effectiveInvert = invertPref;
+            // Always choose the darker result: compare original luma to inverted luma.
+            // The luminance of the inverted color is simply 1.0 - luma.
+            float invertedLuma = 1.0f - m_avgLuma;
+            m_effectiveInvert = (m_avgLuma > invertedLuma);
         }
     }
     else
