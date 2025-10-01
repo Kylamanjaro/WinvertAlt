@@ -2000,13 +2000,14 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
             Controls::Grid::SetColumn(dstBtn, 3);
             rowGrid.Children().Append(dstBtn);
 
-            // Tolerance
-            Controls::NumberBox tol{};
-            tol.Minimum(0); tol.Maximum(255);
+            // Tolerance (as Slider)
+            Controls::Slider tol{};
+            tol.Minimum(0);
+            tol.Maximum(255);
+            tol.StepFrequency(1);
             tol.Value(maps[i].tolerance);
-            tol.SpinButtonPlacementMode(Controls::NumberBoxSpinButtonPlacementMode::Compact);
             tol.Tag(box_value(i));
-            tol.ValueChanged([this](auto const& s, auto const& e){ ColorMapTolerance_ValueChanged(s, e); });
+            tol.ValueChanged([this](auto const& s, auto const& e){ ColorMapToleranceSlider_ValueChanged(s, e); });
             Controls::Grid::SetColumn(tol, 4);
             rowGrid.Children().Append(tol);
 
@@ -2154,10 +2155,15 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
         }
     }
 
-    void winrt::Winvert4::implementation::MainWindow::ColorMapTolerance_ValueChanged(Controls::NumberBox const& sender, Controls::NumberBoxValueChangedEventArgs const& e)
+    void winrt::Winvert4::implementation::MainWindow::ColorMapToleranceSlider_ValueChanged(winrt::Windows::Foundation::IInspectable const& sender, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
     {
         if (m_isUpdatingColorMapUI) return;
-        int row = -1; auto tagObj = sender.Tag(); if (tagObj) row = unbox_value<int>(tagObj);
+        int row = -1;
+        if (auto fe = sender.try_as<FrameworkElement>())
+        {
+            auto tagObj = fe.Tag();
+            if (tagObj) row = unbox_value<int>(tagObj);
+        }
         auto& maps = m_globalColorMaps; if (row < 0 || row >= static_cast<int>(maps.size())) return;
         int newTol = static_cast<int>(e.NewValue());
         if (maps[row].tolerance == newTol) return;

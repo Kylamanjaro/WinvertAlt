@@ -7,7 +7,7 @@ struct ColorMapEntry
 {
     bool enabled{ true };
     uint8_t srcR{ 0 }, srcG{ 0 }, srcB{ 0 };
-    uint8_t dstR{ 255 }, dstG{ 255 }, dstB{ 255 };
+    uint8_t dstR{ 0 }, dstG{ 0 }, dstB{ 0 };
     int tolerance{ 16 }; // 0-255 range tolerance
 };
 

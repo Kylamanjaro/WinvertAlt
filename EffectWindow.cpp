@@ -68,9 +68,18 @@ namespace {
                   if (dist2 <= t2 && t2 > 1e-12) {
                       // Softly steer nearby colors toward the destination color, preserving original luminance
                       float3 dst = colorMapDst[i].xyz;
-                      float lOrig = Luma(rgb);
-                      float lDst  = max(Luma(dst), 1e-5);
-                      float3 mapped = dst * (lOrig / lDst);
+                      float3 mapped;
+                      float lDst = Luma(dst); // Luminance of destination
+                      if (lDst < 1e-5 || lDst > 0.999) {
+                          // Destination is black/white. Don't preserve luminance, just use the color directly.
+                          // The luma-preservation math doesn't work well at extremes.
+                          mapped = dst;
+                      } else {
+                          // Preserve original luminance by scaling the destination color.
+                          // This maintains the hue of the destination but brightness of the source.
+                          float lOrig = Luma(rgb);
+                          mapped = dst * (lOrig / lDst);
+                      }
                       // Blend weight with quadratic falloff without sqrt for performance
                       float w = saturate(1.0 - dist2 / t2);
                       // Slightly sharpen the falloff
@@ -717,6 +726,3 @@ void EffectWindow::Render(ID3D11Texture2D* frame, unsigned long long lastPresent
         }
     }
 }
-
-
-
