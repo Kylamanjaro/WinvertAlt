@@ -1719,6 +1719,12 @@ void winrt::Winvert4::implementation::MainWindow::FilterMenuItem_Click(winrt::Wi
         int idx = SelectedTabIndex();
         if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
         {
+            // Clear selection flags for this tab
+            if (static_cast<int>(m_tabFilterSelections.size()) <= idx)
+                m_tabFilterSelections.resize(idx + 1);
+            m_tabFilterSelections[idx].assign(m_savedFilters.size(), false);
+
+            // Reset to identity
             m_windowSettings[idx].isCustomEffectActive = false;
             float I[16] = {1,0,0,0,  0,1,0,0,  0,0,1,0,  0,0,0,1};
             float Z[4]  = {0,0,0,0};
@@ -1730,45 +1736,8 @@ void winrt::Winvert4::implementation::MainWindow::FilterMenuItem_Click(winrt::Wi
         UpdateFilterDropdown();
         return;
     }
-
-    // Apply saved filter by index; compose with existing matrix to allow stacking
-    if (tagIndex >= 0 && tagIndex < static_cast<int>(m_savedFilters.size()))
-    {
-        int idx = SelectedTabIndex();
-        if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
-        {
-            auto& sf = m_savedFilters[tagIndex];
-            // Current
-            float Mc[16]; memcpy(Mc, m_windowSettings[idx].colorMat, sizeof(Mc));
-            float Oc[4];  memcpy(Oc, m_windowSettings[idx].colorOffset, sizeof(Oc));
-            // Selected
-            float Ms[16]; memcpy(Ms, sf.mat, sizeof(Ms));
-            float Os[4];  memcpy(Os, sf.offset, sizeof(Os));
-            // Compose: M' = Ms * Mc; O' = Ms * Oc + Os
-            float Mnew[16];
-            for (int r = 0; r < 4; ++r)
-            {
-                for (int c = 0; c < 4; ++c)
-                {
-                    Mnew[r*4+c] = Ms[r*4+0]*Mc[0*4+c] + Ms[r*4+1]*Mc[1*4+c] + Ms[r*4+2]*Mc[2*4+c] + Ms[r*4+3]*Mc[3*4+c];
-                }
-            }
-            float Otmp[4];
-            for (int i = 0; i < 4; ++i)
-            {
-                Otmp[i] = Ms[i*4+0]*Oc[0] + Ms[i*4+1]*Oc[1] + Ms[i*4+2]*Oc[2] + Ms[i*4+3]*Oc[3];
-            }
-            float Onew[4] = { Otmp[0] + Os[0], Otmp[1] + Os[1], Otmp[2] + Os[2], Otmp[3] + Os[3] };
-
-            m_windowSettings[idx].isCustomEffectActive = true;
-            memcpy(m_windowSettings[idx].colorMat, Mnew, sizeof(Mnew));
-            memcpy(m_windowSettings[idx].colorOffset, Onew, sizeof(Onew));
-            UpdateSettingsForGroup(idx);
-        }
-        // Keep open to allow stacking multiple selections
-        m_keepFiltersFlyoutOpenNext = true;
-        UpdateFilterDropdown();
-    }
+    // Toggle items are handled separately
+    return;
 }
 
 // Build flyout items from saved filters
@@ -1784,14 +1753,76 @@ void winrt::Winvert4::implementation::MainWindow::UpdateFilterDropdown()
     noneItem.Click({ this, &MainWindow::FilterMenuItem_Click });
     flyout.Items().Append(noneItem);
 
+    int idx = SelectedTabIndex();
+    bool haveSel = (idx >= 0 && idx < static_cast<int>(m_tabFilterSelections.size()) && static_cast<int>(m_tabFilterSelections[idx].size()) == static_cast<int>(m_savedFilters.size()));
     for (int i = 0; i < static_cast<int>(m_savedFilters.size()); ++i)
     {
-        auto item = MenuFlyoutItem();
-        item.Text(m_savedFilters[i].name);
-        item.Tag(box_value(i));
-        item.Click({ this, &MainWindow::FilterMenuItem_Click });
-        flyout.Items().Append(item);
+        auto t = ToggleMenuFlyoutItem();
+        t.Text(m_savedFilters[i].name);
+        t.Tag(box_value(i));
+        if (haveSel) t.IsChecked(m_tabFilterSelections[idx][i]);
+        t.Click({ this, &MainWindow::FilterToggleMenuItem_Click });
+        flyout.Items().Append(t);
     }
+
+}
+// ToggleMenuFlyoutItem handler: recompute composite from all checked items
+void winrt::Winvert4::implementation::MainWindow::FilterToggleMenuItem_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+{
+    auto item = sender.as<ToggleMenuFlyoutItem>();
+    if (!item) return;
+    int tagIndex = -1;
+    if (auto tag = item.Tag()) tagIndex = unbox_value<int>(tag);
+    if (tagIndex < 0 || tagIndex >= static_cast<int>(m_savedFilters.size())) return;
+
+    int idx = SelectedTabIndex();
+    if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
+
+    if (static_cast<int>(m_tabFilterSelections.size()) <= idx)
+        m_tabFilterSelections.resize(idx + 1);
+    if (static_cast<int>(m_tabFilterSelections[idx].size()) != static_cast<int>(m_savedFilters.size()))
+        m_tabFilterSelections[idx].assign(m_savedFilters.size(), false);
+
+    m_tabFilterSelections[idx][tagIndex] = item.IsChecked();
+
+    ApplyCompositeCustomFiltersForTab(idx);
+
+    // Keep open for multi-selection
+    m_keepFiltersFlyoutOpenNext = true;
+    UpdateFilterDropdown();
+}
+
+void winrt::Winvert4::implementation::MainWindow::ApplyCompositeCustomFiltersForTab(int idx)
+{
+    if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
+    // Identity
+    float M[16] = {1,0,0,0,  0,1,0,0,  0,0,1,0,  0,0,0,1};
+    float O[4]  = {0,0,0,0};
+    bool any = false;
+    if (static_cast<int>(m_tabFilterSelections.size()) > idx && static_cast<int>(m_tabFilterSelections[idx].size()) == static_cast<int>(m_savedFilters.size()))
+    {
+        for (int i = 0; i < static_cast<int>(m_savedFilters.size()); ++i)
+        {
+            if (!m_tabFilterSelections[idx][i]) continue;
+            any = true;
+            auto const& sf = m_savedFilters[i];
+            // M' = Ms * M
+            float R[16];
+            for (int r = 0; r < 4; ++r)
+                for (int c = 0; c < 4; ++c)
+                    R[r*4+c] = sf.mat[r*4+0]*M[0*4+c] + sf.mat[r*4+1]*M[1*4+c] + sf.mat[r*4+2]*M[2*4+c] + sf.mat[r*4+3]*M[3*4+c];
+            // O' = Ms * O + Os
+            float Rv[4];
+            for (int r = 0; r < 4; ++r)
+                Rv[r] = sf.mat[r*4+0]*O[0] + sf.mat[r*4+1]*O[1] + sf.mat[r*4+2]*O[2] + sf.mat[r*4+3]*O[3];
+            for (int r = 0; r < 4; ++r) O[r] = Rv[r] + sf.offset[r];
+            memcpy(M, R, sizeof(R));
+        }
+    }
+    m_windowSettings[idx].isCustomEffectActive = any;
+    memcpy(m_windowSettings[idx].colorMat, M, sizeof(M));
+    memcpy(m_windowSettings[idx].colorOffset, O, sizeof(O));
+    UpdateSettingsForGroup(idx);
 }
 
 void winrt::Winvert4::implementation::MainWindow::UpdateSavedFiltersCombo()
@@ -2203,4 +2234,5 @@ int winrt::Winvert4::implementation::MainWindow::FavoriteFilterIndex() const
 {
     return m_favoriteFilterIndex;
 }
+
 

@@ -171,6 +171,11 @@ namespace winrt::Winvert4::implementation
         std::vector<SavedFilter> m_savedFilters;
         void UpdateFilterDropdown();
         void UpdateSavedFiltersCombo();
+        void FilterToggleMenuItem_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void ApplyCompositeCustomFiltersForTab(int idx);
+
+        // Per-tab selection of saved filters (for checked state in flyout)
+        std::vector<std::vector<bool>> m_tabFilterSelections;
 
         // --- Preview state (temporary apply while on settings page) ---
         bool m_isPreviewActive{ false };
