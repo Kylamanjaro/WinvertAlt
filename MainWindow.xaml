@@ -110,6 +110,12 @@
                                 <StackPanel Spacing="8" Padding="8,4,0,8" HorizontalAlignment="Left">
                                     <TextBlock Text="Target pixels for downsample (≈)"/>
                                     <NumberBox x:Name="DownsampleTargetPixelsNumberBox" Minimum="16" Maximum="4096" Value="256" SmallChange="16" LargeChange="64" SpinButtonPlacementMode="Compact" ValueChanged="DownsampleTargetPixelsNumberBox_ValueChanged"/>
+                                    <TextBlock Text="Luminance Weights" Margin="0,12,0,0"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <NumberBox x:Name="LumaRNumberBox" Header="R" Value="0.2126" Minimum="0" Maximum="1" SmallChange="0.01" LargeChange="0.1" SpinButtonPlacementMode="Compact" ValueChanged="LumaWeight_ValueChanged"/>
+                                        <NumberBox x:Name="LumaGNumberBox" Header="G" Value="0.7152" Minimum="0" Maximum="1" SmallChange="0.01" LargeChange="0.1" SpinButtonPlacementMode="Compact" ValueChanged="LumaWeight_ValueChanged"/>
+                                        <NumberBox x:Name="LumaBNumberBox" Header="B" Value="0.0722" Minimum="0" Maximum="1" SmallChange="0.01" LargeChange="0.1" SpinButtonPlacementMode="Compact" ValueChanged="LumaWeight_ValueChanged"/>
+                                    </StackPanel>
                                 </StackPanel>
                             </Expander>
                         </Border>
@@ -353,4 +359,3 @@
         </Grid>
     </Grid>
 </Window>
-

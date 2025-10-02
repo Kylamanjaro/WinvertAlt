@@ -34,6 +34,9 @@ struct EffectSettings
     };
     float colorOffset[4]{ 0,0,0,0 };
 
+    // Luminance weights for brightness protection and grayscale
+    float lumaWeights[3]{ 0.2126f, 0.7152f, 0.0722f };
+
     // Diagnostics
     bool showFpsOverlay = false;
 

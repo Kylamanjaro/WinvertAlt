@@ -63,10 +63,12 @@ private:
         uint32_t enableGrayscale;
         uint32_t enableMatrix;
         uint32_t enableColorMap;
+        float lumaWeights[3];
+        float _pad1; // Padding to align colorMat to 16 bytes
         float colorMat[16];
         float colorOffset[4];
         uint32_t colorMapCount;
-        float _pad1[3];
+        float _pad2[3]; // Padding to align colorMapSrc to 16 bytes
         // Pack src RGB in xyz and tolerance^2 in w
         float colorMapSrc[kMaxColorMaps][4];
         // Pack dst RGB in xyz; w unused

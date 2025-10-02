@@ -33,10 +33,12 @@ namespace {
             uint enableGrayscale;
             uint enableMatrix;
             uint enableColorMap;
+            float3 lumaWeights;
+            float _pad1; // Padding for alignment
             row_major float4x4 colorMat;
             float4   colorOffset;
             uint colorMapCount;
-            float3 _pad1;
+            float3 _pad2; // Padding for alignment
             float4 colorMapSrc[64];
             float4 colorMapDst[64];
         };
@@ -44,14 +46,14 @@ namespace {
         struct PSIn { float4 pos:SV_Position; float2 uv:TEXCOORD0; };
 
         // Utility: luminance helper
-        float Luma(float3 x) { return dot(x, float3(0.299, 0.587, 0.114)); }
+        float Luma(float3 x) { return dot(x, lumaWeights); }
 
         float4 main(PSIn i) : SV_Target {
           float4 c = srcTex.Sample(samp0, i.uv);
           float3 result = c.rgb;
           if (enableInvert) { result = 1.0 - result; }
           if (enableGrayscale) {
-              float g = dot(result, float3(0.299, 0.587, 0.114));
+              float g = dot(result, lumaWeights);
               result = float3(g, g, g);
           }
           if (enableMatrix != 0) { float4 cr = mul(float4(result,1.0), colorMat); result = cr.rgb + colorOffset.rgb; }
@@ -254,6 +256,7 @@ void EffectWindow::UpdateCBs_()
     pcb.enableGrayscale  = m_settings.isGrayscaleEffectEnabled ? 1u : 0u;
     pcb.enableMatrix     = m_settings.isCustomEffectActive ? 1u : 0u;
     pcb.enableColorMap   = (m_settings.isColorMappingEnabled && !m_settings.colorMaps.empty()) ? 1u : 0u;
+    memcpy(pcb.lumaWeights, m_settings.lumaWeights, sizeof(pcb.lumaWeights));
     if (m_settings.isCustomEffectActive)
     {
         memcpy(pcb.colorMat,    m_settings.colorMat,    sizeof(pcb.colorMat));
@@ -537,14 +540,21 @@ void EffectWindow::Render(ID3D11Texture2D* frame, unsigned long long lastPresent
         {
             const uint8_t* px = static_cast<const uint8_t*>(map.pData);
             float b = px[0] / 255.0f; float g = px[1] / 255.0f; float r = px[2] / 255.0f;
-            // Match luma weights used elsewhere
-            m_avgLuma = r * 0.299f + g * 0.587f + b * 0.114f;
+            // Use configurable luma weights
+            m_avgLuma = r * m_settings.lumaWeights[0] + g * m_settings.lumaWeights[1] + b * m_settings.lumaWeights[2];
             m_immediateCtx->Unmap(m_mipReadback1x1.Get(), 0);
 
+            bool previousInvert = m_effectiveInvert;
             // Always choose the darker result: compare original luma to inverted luma.
-            // The luminance of the inverted color is simply 1.0 - luma.
+            // The luminance of the inverted color is 1.0 - luma (assuming weights sum to 1).
             float invertedLuma = 1.0f - m_avgLuma;
-            m_effectiveInvert = (m_avgLuma > invertedLuma);
+            m_effectiveInvert = (invertedLuma < m_avgLuma);
+
+            if (m_effectiveInvert != previousInvert)
+            {
+                winvert4::Logf("EW: Brightness protection flipped to %s (Luma: %.3f, Inverted Luma: %.3f)",
+                    m_effectiveInvert ? "ON" : "OFF", m_avgLuma, invertedLuma);
+            }
         }
     }
     else

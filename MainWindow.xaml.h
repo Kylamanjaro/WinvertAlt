@@ -31,6 +31,7 @@ namespace winrt::Winvert4::implementation
         void CollapseAllSettingsExpanders();
         void UpdateSettingsColumnsForWindowState();
         void CustomFiltersExpander_Collapsed(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::ExpanderCollapsedEventArgs const&);
+        void LumaWeight_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
         void BrightnessThresholdNumberBox_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
         void DownsampleTargetPixelsNumberBox_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
         void FpsComboBox_SelectionChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
@@ -128,6 +129,7 @@ namespace winrt::Winvert4::implementation
         bool m_lastRemovalViaUI{ false };
         bool m_lastRemovalInitiatedByHotkey{ false };
         bool m_keepFiltersFlyoutOpenNext{ false };
+        float m_lumaWeights[3]{ 0.2126f, 0.7152f, 0.0722f }; // Global setting, copied to new windows
         bool m_showSelectionInstructions{ true }; // From reference
 
         // --- Settings ---
@@ -235,4 +237,3 @@ namespace winrt::Winvert4::factory_implementation
 {
     struct MainWindow : MainWindowT<MainWindow, implementation::MainWindow> {};
 }
-

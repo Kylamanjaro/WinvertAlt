@@ -187,7 +187,7 @@ namespace winrt::Winvert4::implementation
             // Color Blindness Simulation (Protanopia)
             const float M_PROT[16] = {
                 0.152286f, 1.052583f,-0.204868f,0,
-                0.114503f, 0.786281f, 0.099216f,0,
+                0.0722503f, 0.786281f, 0.099216f,0,
                -0.003882f,-0.048116f, 1.051998f,0,
                 0,0,0,1
             };
@@ -500,7 +500,7 @@ void winrt::Winvert4::implementation::MainWindow::ComposeSimpleMatrix(float (&ou
     outOff[0] += co; outOff[1] += co; outOff[2] += co;
 
     float s = m_simpleSaturation;
-    const float Lr = 0.299f, Lg = 0.587f, Lb = 0.114f;
+    const float Lr = 0.2126f, Lg = 0.7152f, Lb = 0.0722f;
     float satMat[16] = { 0 };
     satMat[15] = 1.0f;
     satMat[0] = (1 - s) * Lr + s;  satMat[1] = (1 - s) * Lg;      satMat[2] = (1 - s) * Lb;
@@ -906,6 +906,7 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
             }
         }
         settings.showFpsOverlay = m_showFpsOverlay;
+        memcpy(settings.lumaWeights, m_lumaWeights, sizeof(settings.lumaWeights));
         m_windowSettings.push_back(settings);
         m_pendingEffect = PendingEffect::None; // Reset for next time
 
@@ -1492,16 +1493,16 @@ void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspe
 
         switch (uMsg) {
         case WM_HOTKEY:
-        {
-            if (wParam == HOTKEY_INVERT_ID) {
+            {
+                if (wParam == HOTKEY_INVERT_ID) {
                 pThis->OnInvertHotkeyPressed();
-            }
-            else if (wParam == HOTKEY_GRAYSCALE_ID) {
+                }
+                else if (wParam == HOTKEY_GRAYSCALE_ID) {
                 pThis->OnGrayscaleHotkeyPressed();
-            }
-            else if (wParam == HOTKEY_REMOVE_ID) {
+                }
+                else if (wParam == HOTKEY_REMOVE_ID) {
                 pThis->OnRemoveHotkeyPressed();
-            }
+                }
             break;
         }
         case WM_DESTROY:
@@ -1898,6 +1899,23 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
         bool anyPreview = false;
         for (bool b : m_hasPreviewBackup) { if (b) { anyPreview = true; break; } }
         m_isPreviewActive = anyPreview;
+    }
+}
+
+void winrt::Winvert4::implementation::MainWindow::LumaWeight_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&)
+{
+    // Defer handling until after the window is fully initialized to avoid race conditions.
+    if (!m_isAppInitialized) return;
+
+    m_lumaWeights[0] = static_cast<float>(LumaRNumberBox().Value());
+    m_lumaWeights[1] = static_cast<float>(LumaGNumberBox().Value());
+    m_lumaWeights[2] = static_cast<float>(LumaBNumberBox().Value());
+
+    // Apply to all windows immediately
+    for (size_t i = 0; i < m_windowSettings.size(); ++i)
+    {
+        memcpy(m_windowSettings[i].lumaWeights, m_lumaWeights, sizeof(m_lumaWeights));
+        UpdateSettingsForGroup(static_cast<int>(i));
     }
 }
 
