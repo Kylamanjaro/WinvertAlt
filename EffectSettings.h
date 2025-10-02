@@ -20,7 +20,6 @@ struct EffectSettings
 
     // Brightness Protection
     bool isBrightnessProtectionEnabled = false;
-    int brightnessThreshold = 220;
 
     // Custom Matrix Filter
     bool isCustomEffectActive = false;

@@ -481,208 +481,182 @@ namespace winrt::Winvert4::implementation
         if (FilterEditorPanel()) FilterEditorPanel().Visibility(Visibility::Collapsed);
     }
 
-void winrt::Winvert4::implementation::MainWindow::CustomFiltersExpander_Collapsed(IInspectable const&, Microsoft::UI::Xaml::Controls::ExpanderCollapsedEventArgs const&)
-{
-    // Hide the editor when the Custom Filters expander collapses
-    if (auto panel = FilterEditorPanel()) panel.Visibility(Visibility::Collapsed);
-}
-
-// --- Simple vs Advanced filter mode ---
-void winrt::Winvert4::implementation::MainWindow::AdvancedMatrixToggle_Toggled(IInspectable const&, RoutedEventArgs const&)
-{
-    bool advanced = AdvancedMatrixToggle().IsOn();
-    // Keep the header (with toggle) visible; only hide the sliders panel when advanced
-    if (auto panel = SimpleSlidersPanel()) panel.Visibility(advanced ? Visibility::Collapsed : Visibility::Visible);
-    if (auto grid = FilterMatrixGrid()) grid.Visibility(advanced ? Visibility::Visible : Visibility::Collapsed);
-}
-
-void winrt::Winvert4::implementation::MainWindow::ComposeSimpleMatrix(float (&outMat)[16], float (&outOff)[4])
-{
-    for (int i = 0; i < 16; ++i) outMat[i] = 0.0f;
-    outMat[0] = outMat[5] = outMat[10] = outMat[15] = 1.0f;
-    outOff[0] = outOff[1] = outOff[2] = outOff[3] = 0.0f;
-
-    float c = m_simpleContrast;
-    outMat[0] *= c; outMat[5] *= c; outMat[10] *= c;
-    float co = 0.5f * (1.0f - c);
-    outOff[0] += co; outOff[1] += co; outOff[2] += co;
-
-    float s = m_simpleSaturation;
-    const float Lr = kDefaultLumaWeights[0], Lg = kDefaultLumaWeights[1], Lb = kDefaultLumaWeights[2];
-    float satMat[16] = { 0 };
-    satMat[15] = 1.0f;
-    satMat[0] = (1 - s) * Lr + s;  satMat[1] = (1 - s) * Lg;      satMat[2] = (1 - s) * Lb;
-    satMat[4] = (1 - s) * Lr;      satMat[5] = (1 - s) * Lg + s;  satMat[6] = (1 - s) * Lb;
-    satMat[8] = (1 - s) * Lr;      satMat[9] = (1 - s) * Lg;      satMat[10]= (1 - s) * Lb + s;
-
-    float tmp[16] = {0};
-    for (int r = 0; r < 4; ++r)
-        for (int k = 0; k < 4; ++k)
-            for (int c2 = 0; c2 < 4; ++c2)
-                tmp[r*4 + c2] += satMat[r*4 + k] * outMat[k*4 + c2];
-    for (int i = 0; i < 16; ++i) outMat[i] = tmp[i];
-
-    float t = m_simpleTemperature;
-    float ti = m_simpleTint;
-    float rScale = 1.0f + 0.15f * t - 0.05f * ti;
-    float gScale = 1.0f + 0.10f * ti;
-    float bScale = 1.0f - 0.15f * t - 0.05f * ti;
-    outMat[0] *= rScale; outMat[5] *= gScale; outMat[10] *= bScale;
-
-    float b = m_simpleBrightness;
-    outOff[0] += b; outOff[1] += b; outOff[2] += b;
-}
-
-void winrt::Winvert4::implementation::MainWindow::WriteMatrixToGrid(const float (&mat)[16], const float (&off)[4])
-{
-    auto grid = FilterMatrixGrid(); if (!grid) return;
-    for (auto child : grid.Children())
+    void winrt::Winvert4::implementation::MainWindow::CustomFiltersExpander_Collapsed(IInspectable const&, Microsoft::UI::Xaml::Controls::ExpanderCollapsedEventArgs const&)
     {
-        auto tb = child.try_as<TextBox>(); if (!tb) continue;
-        int r = Microsoft::UI::Xaml::Controls::Grid::GetRow(tb);
-        int c = Microsoft::UI::Xaml::Controls::Grid::GetColumn(tb);
-        double v = 0.0;
-        if (r < 4 && c < 4) v = mat[r * 4 + c];
-        else if (r < 4 && c == 4) v = off[r];
-        else if (r == 4 && c == 4) v = 1.0;
-        wchar_t buf[32]; swprintf_s(buf, L"%.3f", v);
-        tb.Text(buf);
+        // Hide the editor when the Custom Filters expander collapses
+        if (auto panel = FilterEditorPanel()) panel.Visibility(Visibility::Collapsed);
     }
-}
 
-void winrt::Winvert4::implementation::MainWindow::BrightnessSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
-{
-    m_simpleBrightness = static_cast<float>(e.NewValue());
-    float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
-    if (m_isPreviewActive)
+    // --- Simple vs Advanced filter mode ---
+    void winrt::Winvert4::implementation::MainWindow::AdvancedMatrixToggle_Toggled(IInspectable const&, RoutedEventArgs const&)
     {
-        int idx = SelectedTabIndex();
-        if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
+        bool advanced = AdvancedMatrixToggle().IsOn();
+        // Keep the header (with toggle) visible; only hide the sliders panel when advanced
+        if (auto panel = SimpleSlidersPanel()) panel.Visibility(advanced ? Visibility::Collapsed : Visibility::Visible);
+        if (auto grid = FilterMatrixGrid()) grid.Visibility(advanced ? Visibility::Visible : Visibility::Collapsed);
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::ComposeSimpleMatrix(float (&outMat)[16], float (&outOff)[4])
+    {
+        for (int i = 0; i < 16; ++i) outMat[i] = 0.0f;
+        outMat[0] = outMat[5] = outMat[10] = outMat[15] = 1.0f;
+        outOff[0] = outOff[1] = outOff[2] = outOff[3] = 0.0f;
+
+        float c = m_simpleContrast;
+        outMat[0] *= c; outMat[5] *= c; outMat[10] *= c;
+        float co = 0.5f * (1.0f - c);
+        outOff[0] += co; outOff[1] += co; outOff[2] += co;
+
+        float s = m_simpleSaturation;
+        const float Lr = kDefaultLumaWeights[0], Lg = kDefaultLumaWeights[1], Lb = kDefaultLumaWeights[2];
+        float satMat[16] = { 0 };
+        satMat[15] = 1.0f;
+        satMat[0] = (1 - s) * Lr + s;  satMat[1] = (1 - s) * Lg;      satMat[2] = (1 - s) * Lb;
+        satMat[4] = (1 - s) * Lr;      satMat[5] = (1 - s) * Lg + s;  satMat[6] = (1 - s) * Lb;
+        satMat[8] = (1 - s) * Lr;      satMat[9] = (1 - s) * Lg;      satMat[10]= (1 - s) * Lb + s;
+
+        float tmp[16] = {0};
+        for (int r = 0; r < 4; ++r)
+            for (int k = 0; k < 4; ++k)
+                for (int c2 = 0; c2 < 4; ++c2)
+                    tmp[r*4 + c2] += satMat[r*4 + k] * outMat[k*4 + c2];
+        for (int i = 0; i < 16; ++i) outMat[i] = tmp[i];
+
+        float t = m_simpleTemperature;
+        float ti = m_simpleTint;
+        float rScale = 1.0f + 0.15f * t - 0.05f * ti;
+        float gScale = 1.0f + 0.10f * ti;
+        float bScale = 1.0f - 0.15f * t - 0.05f * ti;
+        outMat[0] *= rScale; outMat[5] *= gScale; outMat[10] *= bScale;
+
+        float b = m_simpleBrightness;
+        outOff[0] += b; outOff[1] += b; outOff[2] += b;
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::WriteMatrixToGrid(const float (&mat)[16], const float (&off)[4])
+    {
+        auto grid = FilterMatrixGrid(); if (!grid) return;
+        for (auto child : grid.Children())
         {
-            if (static_cast<int>(m_hasPreviewBackup.size()) <= idx) { m_hasPreviewBackup.resize(idx + 1, false); m_previewBackup.resize(idx + 1); }
-            if (!m_hasPreviewBackup[idx]) { m_previewBackup[idx] = m_windowSettings[idx]; m_hasPreviewBackup[idx] = true; }
-            m_windowSettings[idx].isCustomEffectActive = true;
-            memcpy(m_windowSettings[idx].colorMat, m, sizeof(m));
-            memcpy(m_windowSettings[idx].colorOffset, off, sizeof(off));
-            UpdateSettingsForGroup(idx);
+            auto tb = child.try_as<TextBox>(); if (!tb) continue;
+            int r = Microsoft::UI::Xaml::Controls::Grid::GetRow(tb);
+            int c = Microsoft::UI::Xaml::Controls::Grid::GetColumn(tb);
+            double v = 0.0;
+            if (r < 4 && c < 4) v = mat[r * 4 + c];
+            else if (r < 4 && c == 4) v = off[r];
+            else if (r == 4 && c == 4) v = 1.0;
+            wchar_t buf[32]; swprintf_s(buf, L"%.3f", v);
+            tb.Text(buf);
         }
     }
-}
-void winrt::Winvert4::implementation::MainWindow::ContrastSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
-{
-    m_simpleContrast = static_cast<float>(e.NewValue());
-    float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
-    if (m_isPreviewActive)
-    {
-        int idx = SelectedTabIndex();
-        if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
-        {
-            if (static_cast<int>(m_hasPreviewBackup.size()) <= idx) { m_hasPreviewBackup.resize(idx + 1, false); m_previewBackup.resize(idx + 1); }
-            if (!m_hasPreviewBackup[idx]) { m_previewBackup[idx] = m_windowSettings[idx]; m_hasPreviewBackup[idx] = true; }
-            m_windowSettings[idx].isCustomEffectActive = true;
-            memcpy(m_windowSettings[idx].colorMat, m, sizeof(m));
-            memcpy(m_windowSettings[idx].colorOffset, off, sizeof(off));
-            UpdateSettingsForGroup(idx);
-        }
-    }
-}
-void winrt::Winvert4::implementation::MainWindow::SaturationSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
-{
-    m_simpleSaturation = static_cast<float>(e.NewValue());
-    float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
-    if (m_isPreviewActive)
-    {
-        int idx = SelectedTabIndex();
-        if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
-        {
-            if (static_cast<int>(m_hasPreviewBackup.size()) <= idx) { m_hasPreviewBackup.resize(idx + 1, false); m_previewBackup.resize(idx + 1); }
-            if (!m_hasPreviewBackup[idx]) { m_previewBackup[idx] = m_windowSettings[idx]; m_hasPreviewBackup[idx] = true; }
-            m_windowSettings[idx].isCustomEffectActive = true;
-            memcpy(m_windowSettings[idx].colorMat, m, sizeof(m));
-            memcpy(m_windowSettings[idx].colorOffset, off, sizeof(off));
-            UpdateSettingsForGroup(idx);
-        }
-    }
-}
-void winrt::Winvert4::implementation::MainWindow::TemperatureSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
-{
-    m_simpleTemperature = static_cast<float>(e.NewValue());
-    float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
-    if (m_isPreviewActive)
-    {
-        int idx = SelectedTabIndex();
-        if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
-        {
-            if (static_cast<int>(m_hasPreviewBackup.size()) <= idx) { m_hasPreviewBackup.resize(idx + 1, false); m_previewBackup.resize(idx + 1); }
-            if (!m_hasPreviewBackup[idx]) { m_previewBackup[idx] = m_windowSettings[idx]; m_hasPreviewBackup[idx] = true; }
-            m_windowSettings[idx].isCustomEffectActive = true;
-            memcpy(m_windowSettings[idx].colorMat, m, sizeof(m));
-            memcpy(m_windowSettings[idx].colorOffset, off, sizeof(off));
-            UpdateSettingsForGroup(idx);
-        }
-    }
-}
-void winrt::Winvert4::implementation::MainWindow::TintSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
-{
-    m_simpleTint = static_cast<float>(e.NewValue());
-    float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
-    if (m_isPreviewActive)
-    {
-        int idx = SelectedTabIndex();
-        if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
-        {
-            if (static_cast<int>(m_hasPreviewBackup.size()) <= idx) { m_hasPreviewBackup.resize(idx + 1, false); m_previewBackup.resize(idx + 1); }
-            if (!m_hasPreviewBackup[idx]) { m_previewBackup[idx] = m_windowSettings[idx]; m_hasPreviewBackup[idx] = true; }
-            m_windowSettings[idx].isCustomEffectActive = true;
-            memcpy(m_windowSettings[idx].colorMat, m, sizeof(m));
-            memcpy(m_windowSettings[idx].colorOffset, off, sizeof(off));
-            UpdateSettingsForGroup(idx);
-        }
-    }
-}
-void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs const&)
-{
-    m_simpleBrightness = 0.0f; m_simpleContrast = 1.0f; m_simpleSaturation = 1.0f; m_simpleTemperature = 0.0f; m_simpleTint = 0.0f;
-    if (auto s = BrightnessSlider()) s.Value(m_simpleBrightness);
-    if (auto s = ContrastSlider()) s.Value(m_simpleContrast);
-    if (auto s = SaturationSlider()) s.Value(m_simpleSaturation);
-    if (auto s = TemperatureSlider()) s.Value(m_simpleTemperature);
-    if (auto s = TintSlider()) s.Value(m_simpleTint);
-    float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
-}
 
-    // --- Settings Handlers ---
-    void winrt::Winvert4::implementation::MainWindow::BrightnessThresholdNumberBox_ValueChanged(NumberBox const&, NumberBoxValueChangedEventArgs const& args)
+    void winrt::Winvert4::implementation::MainWindow::BrightnessSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
     {
-        m_brightnessThreshold = static_cast<int>(args.NewValue());
-        // Apply to all windows that have brightness protection enabled
-        for (size_t i = 0; i < m_windowSettings.size(); ++i)
+        m_simpleBrightness = static_cast<float>(e.NewValue());
+        float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
+        if (m_isPreviewActive)
         {
-            if (m_windowSettings[i].isBrightnessProtectionEnabled)
+            int idx = SelectedTabIndex();
+            if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
             {
-                m_windowSettings[i].brightnessThreshold = m_brightnessThreshold;
-                UpdateSettingsForGroup(static_cast<int>(i));
+                if (static_cast<int>(m_hasPreviewBackup.size()) <= idx) { m_hasPreviewBackup.resize(idx + 1, false); m_previewBackup.resize(idx + 1); }
+                if (!m_hasPreviewBackup[idx]) { m_previewBackup[idx] = m_windowSettings[idx]; m_hasPreviewBackup[idx] = true; }
+                m_windowSettings[idx].isCustomEffectActive = true;
+                memcpy(m_windowSettings[idx].colorMat, m, sizeof(m));
+                memcpy(m_windowSettings[idx].colorOffset, off, sizeof(off));
+                UpdateSettingsForGroup(idx);
+            }
+        }
+    }
+    
+    void winrt::Winvert4::implementation::MainWindow::ContrastSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
+    {
+        m_simpleContrast = static_cast<float>(e.NewValue());
+        float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
+        if (m_isPreviewActive)
+        {
+            int idx = SelectedTabIndex();
+            if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
+            {
+                if (static_cast<int>(m_hasPreviewBackup.size()) <= idx) { m_hasPreviewBackup.resize(idx + 1, false); m_previewBackup.resize(idx + 1); }
+                if (!m_hasPreviewBackup[idx]) { m_previewBackup[idx] = m_windowSettings[idx]; m_hasPreviewBackup[idx] = true; }
+                m_windowSettings[idx].isCustomEffectActive = true;
+                memcpy(m_windowSettings[idx].colorMat, m, sizeof(m));
+                memcpy(m_windowSettings[idx].colorOffset, off, sizeof(off));
+                UpdateSettingsForGroup(idx);
             }
         }
     }
 
-
-    void winrt::Winvert4::implementation::MainWindow::DownsampleTargetPixelsNumberBox_ValueChanged(NumberBox const&, NumberBoxValueChangedEventArgs const& args)
+    void winrt::Winvert4::implementation::MainWindow::SaturationSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
     {
-        m_downsampleTargetPixels = static_cast<int>(args.NewValue());
-        if (m_downsampleTargetPixels < 16) m_downsampleTargetPixels = 16;
-        //SendSettingsToWorker();
-    }
-
-    void winrt::Winvert4::implementation::MainWindow::FpsComboBox_SelectionChanged(IInspectable const&, SelectionChangedEventArgs const&)
-    {
-        m_fpsSetting = FpsComboBox().SelectedIndex();
-        if (!m_isAppInitialized)
+        m_simpleSaturation = static_cast<float>(e.NewValue());
+        float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
+        if (m_isPreviewActive)
         {
-            return;
+            int idx = SelectedTabIndex();
+            if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
+            {
+                if (static_cast<int>(m_hasPreviewBackup.size()) <= idx) { m_hasPreviewBackup.resize(idx + 1, false); m_previewBackup.resize(idx + 1); }
+                if (!m_hasPreviewBackup[idx]) { m_previewBackup[idx] = m_windowSettings[idx]; m_hasPreviewBackup[idx] = true; }
+                m_windowSettings[idx].isCustomEffectActive = true;
+                memcpy(m_windowSettings[idx].colorMat, m, sizeof(m));
+                memcpy(m_windowSettings[idx].colorOffset, off, sizeof(off));
+                UpdateSettingsForGroup(idx);
+            }
         }
-        //SendSettingsToWorker();
     }
+
+    void winrt::Winvert4::implementation::MainWindow::TemperatureSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
+    {
+        m_simpleTemperature = static_cast<float>(e.NewValue());
+        float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
+        if (m_isPreviewActive)
+        {
+            int idx = SelectedTabIndex();
+            if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
+            {
+                if (static_cast<int>(m_hasPreviewBackup.size()) <= idx) { m_hasPreviewBackup.resize(idx + 1, false); m_previewBackup.resize(idx + 1); }
+                if (!m_hasPreviewBackup[idx]) { m_previewBackup[idx] = m_windowSettings[idx]; m_hasPreviewBackup[idx] = true; }
+                m_windowSettings[idx].isCustomEffectActive = true;
+                memcpy(m_windowSettings[idx].colorMat, m, sizeof(m));
+                memcpy(m_windowSettings[idx].colorOffset, off, sizeof(off));
+                UpdateSettingsForGroup(idx);
+            }
+        }
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::TintSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
+    {
+        m_simpleTint = static_cast<float>(e.NewValue());
+        float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
+        if (m_isPreviewActive)
+        {
+            int idx = SelectedTabIndex();
+            if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
+            {
+                if (static_cast<int>(m_hasPreviewBackup.size()) <= idx) { m_hasPreviewBackup.resize(idx + 1, false); m_previewBackup.resize(idx + 1); }
+                if (!m_hasPreviewBackup[idx]) { m_previewBackup[idx] = m_windowSettings[idx]; m_hasPreviewBackup[idx] = true; }
+                m_windowSettings[idx].isCustomEffectActive = true;
+                memcpy(m_windowSettings[idx].colorMat, m, sizeof(m));
+                memcpy(m_windowSettings[idx].colorOffset, off, sizeof(off));
+                UpdateSettingsForGroup(idx);
+            }
+        }
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs const&)
+    {
+        m_simpleBrightness = 0.0f; m_simpleContrast = 1.0f; m_simpleSaturation = 1.0f; m_simpleTemperature = 0.0f; m_simpleTint = 0.0f;
+        if (auto s = BrightnessSlider()) s.Value(m_simpleBrightness);
+        if (auto s = ContrastSlider()) s.Value(m_simpleContrast);
+        if (auto s = SaturationSlider()) s.Value(m_simpleSaturation);
+        if (auto s = TemperatureSlider()) s.Value(m_simpleTemperature);
+        if (auto s = TintSlider()) s.Value(m_simpleTint);
+        float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
+    }
+
+
 
     void winrt::Winvert4::implementation::MainWindow::ShowFpsToggle_Toggled(IInspectable const&, RoutedEventArgs const&)
     {

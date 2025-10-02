@@ -108,8 +108,6 @@
                                     </Grid>
                                 </Expander.Header>
                                 <StackPanel Spacing="8" Padding="8,4,0,8" HorizontalAlignment="Left">
-                                    <TextBlock Text="Target pixels for downsample (≈)"/>
-                                    <NumberBox x:Name="DownsampleTargetPixelsNumberBox" Minimum="16" Maximum="4096" Value="256" SmallChange="16" LargeChange="64" SpinButtonPlacementMode="Compact" ValueChanged="DownsampleTargetPixelsNumberBox_ValueChanged"/>
                                     <TextBlock Text="Luminance Weights" Margin="0,12,0,0"/>
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <NumberBox x:Name="LumaRNumberBox" Header="R" Minimum="0" Maximum="1" SmallChange="0.01" LargeChange="0.1" SpinButtonPlacementMode="Compact" ValueChanged="LumaWeight_ValueChanged"/>
@@ -139,13 +137,6 @@
                                     <TextBlock Text="Update rate" FontWeight="SemiBold"/>
                                 </Expander.Header>
                                 <StackPanel Spacing="8" Padding="8,4,0,8">
-                                    <ComboBox x:Name="FpsComboBox" SelectionChanged="FpsComboBox_SelectionChanged" HorizontalAlignment="Left">
-                                        <ComboBoxItem Content="Auto"/>
-                                        <ComboBoxItem Content="30 FPS"/>
-                                        <ComboBoxItem Content="60 FPS"/>
-                                        <ComboBoxItem Content="120 FPS"/>
-                                        <ComboBoxItem Content="144 FPS"/>
-                                    </ComboBox>
                                     <ToggleSwitch x:Name="ShowFpsToggle" Header="Show FPS overlay" IsOn="True" Toggled="ShowFpsToggle_Toggled"/>
                                 </StackPanel>
                             </Expander>

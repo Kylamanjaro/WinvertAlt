@@ -32,9 +32,6 @@ namespace winrt::Winvert4::implementation
         void UpdateSettingsColumnsForWindowState();
         void CustomFiltersExpander_Collapsed(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::ExpanderCollapsedEventArgs const&);
         void LumaWeight_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
-        void BrightnessThresholdNumberBox_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
-        void DownsampleTargetPixelsNumberBox_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
-        void FpsComboBox_SelectionChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
         void ShowFpsToggle_Toggled(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void RebindInvertHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void RebindGrayscaleHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
@@ -133,8 +130,6 @@ namespace winrt::Winvert4::implementation
         bool m_showSelectionInstructions{ true }; // From reference
 
         // --- Settings ---
-        int m_brightnessThreshold{ 220 };
-        int m_downsampleTargetPixels{ 256 };
         int m_fpsSetting{ 0 };
         bool m_showFpsOverlay{ false };
         COLORREF m_selectionColor{ RGB(255, 0, 0) };
