@@ -30,7 +30,6 @@ namespace {
         SamplerState samp0 : register(s0);
         cbuffer PixelCB : register(b1) {
             uint enableInvert;
-            uint enableGrayscale;
             uint enableMatrix;
             uint enableColorMap;
             float3 lumaWeights;
@@ -52,10 +51,6 @@ namespace {
           float4 c = srcTex.Sample(samp0, i.uv);
           float3 result = c.rgb;
           if (enableInvert) { result = 1.0 - result; }
-          if (enableGrayscale) {
-              float g = dot(result, lumaWeights);
-              result = float3(g, g, g);
-          }
           if (enableMatrix != 0) { float4 cr = mul(float4(result,1.0), colorMat); result = cr.rgb + colorOffset.rgb; }
           if (enableColorMap != 0 && colorMapCount > 0) {
               float3 rgb = result;
@@ -253,7 +248,6 @@ void EffectWindow::UpdateCBs_()
     PixelCB pcb{};
     bool inv = m_settings.isBrightnessProtectionEnabled ? m_effectiveInvert : m_settings.isInvertEffectEnabled;
     pcb.enableInvert     = inv ? 1u : 0u;
-    pcb.enableGrayscale  = m_settings.isGrayscaleEffectEnabled ? 1u : 0u;
     pcb.enableMatrix     = m_settings.isCustomEffectActive ? 1u : 0u;
     pcb.enableColorMap   = (m_settings.isColorMappingEnabled && !m_settings.colorMaps.empty()) ? 1u : 0u;
     memcpy(pcb.lumaWeights, m_settings.lumaWeights, sizeof(pcb.lumaWeights));

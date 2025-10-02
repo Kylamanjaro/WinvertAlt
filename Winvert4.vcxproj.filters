@@ -231,5 +231,11 @@
     <Media Include="Assets\filter.svg">
       <Filter>Assets</Filter>
     </Media>
+    <Media Include="Assets\mapping_off.svg">
+      <Filter>Assets</Filter>
+    </Media>
+    <Media Include="Assets\mapping_on.svg">
+      <Filter>Assets</Filter>
+    </Media>
   </ItemGroup>
 </Project>

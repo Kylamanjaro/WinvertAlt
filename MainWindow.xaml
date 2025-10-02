@@ -58,7 +58,7 @@
                 </Button>
                 <!-- Mapping toggle button -->
                 <Button x:Name="ColorMappingToggleButton" Grid.Column="4" Click="ColorMappingToggle_Click" Width="36" Height="36" Padding="0" ToolTipService.ToolTip="Toggle Color Mapping">
-                    <TextBlock Text="M" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <Image x:Name="ColorMappingToggleImage" Width="26" Height="26" IsHitTestVisible="False"/>
                 </Button>
             </Grid>
 
@@ -161,8 +161,8 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBox x:Name="InvertHotkeyTextBox" Grid.Row="0" Grid.Column="0" IsReadOnly="True" />
                                         <Button x:Name="RebindInvertHotkeyButton" Grid.Row="0" Grid.Column="1" Content="Rebind Invert/Add" Click="RebindInvertHotkeyButton_Click"/>
-                                        <TextBox x:Name="GrayscaleHotkeyTextBox" Grid.Row="1" Grid.Column="0" IsReadOnly="True" />
-                                        <Button x:Name="RebindGrayscaleHotkeyButton" Grid.Row="1" Grid.Column="1" Content="Rebind Favorite/Add" Click="RebindGrayscaleHotkeyButton_Click"/>
+                                        <TextBox x:Name="FilterHotkeyTextBox" Grid.Row="1" Grid.Column="0" IsReadOnly="True" />
+                                        <Button x:Name="RebindFilterHotkeyButton" Grid.Row="1" Grid.Column="1" Content="Rebind Filter/Add" Click="RebindFilterHotkeyButton_Click"/>
                                         <TextBox x:Name="RemoveHotkeyTextBox" Grid.Row="2" Grid.Column="0" IsReadOnly="True" />
                                         <Button x:Name="RebindRemoveHotkeyButton" Grid.Row="2" Grid.Column="1" Content="Rebind Remove Last" Click="RebindRemoveHotkeyButton_Click"/>
                                     </Grid>

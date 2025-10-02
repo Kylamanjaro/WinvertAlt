@@ -21,7 +21,7 @@ namespace
 {
     constexpr wchar_t kSelectionWndClass[] = L"Winvert4_SelectionOverlayWindow";
     constexpr int HOTKEY_INVERT_ID = 1;
-    constexpr int HOTKEY_GRAYSCALE_ID = 2;
+    constexpr int HOTKEY_FILTER_ID = 2;
     constexpr int HOTKEY_REMOVE_ID = 3;
 
     // Default luminance weights (BT.709 for sRGB)
@@ -88,6 +88,8 @@ namespace winrt::Winvert4::implementation
         m_brightnessOffIconSource = SvgImageSource(Uri(L"ms-appx:///Assets/glasses_off.svg"));
         m_hideIconSource = SvgImageSource(Uri(L"ms-appx:///Assets/hide.svg"));
         m_showIconSource = SvgImageSource(Uri(L"ms-appx:///Assets/show.svg"));
+        m_colorMappingOnIconSource = SvgImageSource(Uri(L"ms-appx:///Assets/mapping_on.svg"));
+        m_colorMappingOffIconSource = SvgImageSource(Uri(L"ms-appx:///Assets/mapping_off.svg"));
         m_invertOnIconSource = SvgImageSource(Uri(L"ms-appx:///Assets/invert_on.svg"));
         m_invertOffIconSource = SvgImageSource(Uri(L"ms-appx:///Assets/invert_off.svg"));
 
@@ -283,8 +285,6 @@ namespace winrt::Winvert4::implementation
         UpdateSettingsForGroup(idx, s);
     }
 
-    // GrayscaleEffect_Click removed: grayscale is available as a Filters preset
-
     void winrt::Winvert4::implementation::MainWindow::AddWindow_Click(IInspectable const&, RoutedEventArgs const&)
     {
         StartScreenSelection();
@@ -399,7 +399,7 @@ namespace winrt::Winvert4::implementation
             m_rebindingState = RebindingState::None;
             RebindStatusText().Text(L"");
             RebindInvertHotkeyButton().IsEnabled(true);
-            RebindGrayscaleHotkeyButton().IsEnabled(true);
+            RebindFilterHotkeyButton().IsEnabled(true);
             RebindRemoveHotkeyButton().IsEnabled(true);
         }
 
@@ -674,17 +674,17 @@ namespace winrt::Winvert4::implementation
         m_rebindingState = RebindingState::Invert;
         RebindStatusText().Text(L"Press key combo for Invert/Add. ESC to cancel.");
         RebindInvertHotkeyButton().IsEnabled(false);
-        RebindGrayscaleHotkeyButton().IsEnabled(true);
+        RebindFilterHotkeyButton().IsEnabled(true);
         RebindRemoveHotkeyButton().IsEnabled(true);
         SetFocus(m_mainHwnd);
     }
 
-    void winrt::Winvert4::implementation::MainWindow::RebindGrayscaleHotkeyButton_Click(IInspectable const&, RoutedEventArgs const&)
+    void winrt::Winvert4::implementation::MainWindow::RebindFilterHotkeyButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
-        m_rebindingState = RebindingState::Grayscale;
-        RebindStatusText().Text(L"Press key combo for Favorite Filter/Add. ESC to cancel.");
+        m_rebindingState = RebindingState::Filter;
+        RebindStatusText().Text(L"Press key combo for Filter/Add. ESC to cancel.");
         RebindInvertHotkeyButton().IsEnabled(true);
-        RebindGrayscaleHotkeyButton().IsEnabled(false);
+        RebindFilterHotkeyButton().IsEnabled(false);
         RebindRemoveHotkeyButton().IsEnabled(true);
         SetFocus(m_mainHwnd);
     }
@@ -694,7 +694,7 @@ namespace winrt::Winvert4::implementation
         m_rebindingState = RebindingState::Remove;
         RebindStatusText().Text(L"Press key combo for Remove Last. ESC to cancel.");
         RebindInvertHotkeyButton().IsEnabled(true);
-        RebindGrayscaleHotkeyButton().IsEnabled(true);
+        RebindFilterHotkeyButton().IsEnabled(true);
         RebindRemoveHotkeyButton().IsEnabled(false);
         SetFocus(m_mainHwnd);
     }
@@ -709,11 +709,11 @@ namespace winrt::Winvert4::implementation
     void winrt::Winvert4::implementation::MainWindow::RegisterAllHotkeys()
     {
         UnregisterHotKey(m_mainHwnd, HOTKEY_INVERT_ID);
-        UnregisterHotKey(m_mainHwnd, HOTKEY_GRAYSCALE_ID);
+        UnregisterHotKey(m_mainHwnd, HOTKEY_FILTER_ID);
         UnregisterHotKey(m_mainHwnd, HOTKEY_REMOVE_ID);
 
         RegisterHotKey(m_mainHwnd, HOTKEY_INVERT_ID, m_hotkeyInvertMod, m_hotkeyInvertVk);
-        RegisterHotKey(m_mainHwnd, HOTKEY_GRAYSCALE_ID, m_hotkeyGrayscaleMod, m_hotkeyGrayscaleVk);
+        RegisterHotKey(m_mainHwnd, HOTKEY_FILTER_ID, m_hotkeyFilterMod, m_hotkeyFilterVk);
         RegisterHotKey(m_mainHwnd, HOTKEY_REMOVE_ID, m_hotkeyRemoveMod, m_hotkeyRemoveVk);
         UpdateAllHotkeyText();
     }
@@ -724,18 +724,18 @@ namespace winrt::Winvert4::implementation
         StartScreenSelection();
     }
 
-    void winrt::Winvert4::implementation::MainWindow::OnGrayscaleHotkeyPressed()
-    {
-        m_pendingEffect = PendingEffect::Favorite;
-        StartScreenSelection();
-    }
-
     void winrt::Winvert4::implementation::MainWindow::OnRemoveHotkeyPressed()
     {
         // Mark hotkey-triggered removal so we can close app if it was the last window
         m_lastRemovalInitiatedByHotkey = true;
         m_lastRemovalViaUI = false;
         // TODO: RequestRemoveLastEffectWindow
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::OnFilterHotkeyPressed()
+    {
+        m_pendingEffect = PendingEffect::Filter;
+        StartScreenSelection();
     }
 
     void winrt::Winvert4::implementation::MainWindow::StartScreenSelection()
@@ -876,7 +876,7 @@ namespace winrt::Winvert4::implementation
             settings.isInvertEffectEnabled = true;
         }
         
-        else if (m_pendingEffect == PendingEffect::Favorite)
+        else if (m_pendingEffect == PendingEffect::Filter)
         {
             int fav = FavoriteFilterIndex();
             if (fav >= 0 && fav < static_cast<int>(m_savedFilters.size()))
@@ -1166,14 +1166,14 @@ namespace winrt::Winvert4::implementation
         }
         if (auto img = BrightnessProtectionImage()) img.Source(current.isBrightnessProtectionEnabled ? m_brightnessOnIconSource : m_brightnessOffIconSource);
         if (auto img = InvertEffectImage()) img.Source(current.isInvertEffectEnabled ? m_invertOnIconSource : m_invertOffIconSource);
-        //if (auto img = GrayscaleEffectImage()) img.Source(current.isGrayscaleEffectEnabled ? m_grayscaleOnIconSource : m_grayscaleOffIconSource);
         bool curHidden = (idx >= 0 && idx < static_cast<int>(m_windowHidden.size())) ? m_windowHidden[idx] : false;
         if (auto img = HideAllWindowsImage()) img.Source(curHidden ? m_showIconSource : m_hideIconSource);
+        if (auto img = ColorMappingToggleImage()) img.Source(current.isColorMappingEnabled ? m_colorMappingOnIconSource : m_colorMappingOffIconSource);
 
         if (auto btn = HideAllWindowsButton()) btn.IsEnabled(hasWindows);
+        if (auto btn = ColorMappingToggleButton()) btn.IsEnabled(hasWindows);
         if (auto btn = BrightnessProtectionButton()) btn.IsEnabled(hasWindows);
         if (auto btn = InvertEffectButton()) btn.IsEnabled(hasWindows);
-        //if (auto btn = GrayscaleEffectButton()) btn.IsEnabled(hasWindows);
         if (auto btn = FiltersDropDownButton()) btn.IsEnabled(hasWindows);
 
         bool showEmptyPrompt = (!hasWindows) && m_hasEverHadWindows && m_lastRemovalViaUI;
@@ -1200,7 +1200,7 @@ namespace winrt::Winvert4::implementation
     void winrt::Winvert4::implementation::MainWindow::UpdateAllHotkeyText()
     {
         if (auto tb = InvertHotkeyTextBox()) UpdateHotkeyText(tb, m_hotkeyInvertMod, m_hotkeyInvertVk);
-        if (auto tb = GrayscaleHotkeyTextBox()) UpdateHotkeyText(tb, m_hotkeyGrayscaleMod, m_hotkeyGrayscaleVk);
+        if (auto tb = FilterHotkeyTextBox()) UpdateHotkeyText(tb, m_hotkeyFilterMod, m_hotkeyFilterVk);
         if (auto tb = RemoveHotkeyTextBox()) UpdateHotkeyText(tb, m_hotkeyRemoveMod, m_hotkeyRemoveVk);
     }
 
@@ -1440,7 +1440,7 @@ namespace winrt::Winvert4::implementation
                     pThis->m_rebindingState = RebindingState::None;
                     pThis->RebindStatusText().Text(L"Rebind cancelled.");
                     pThis->RebindInvertHotkeyButton().IsEnabled(true);
-                    pThis->RebindGrayscaleHotkeyButton().IsEnabled(true);
+                    pThis->RebindFilterHotkeyButton().IsEnabled(true);
                     pThis->RebindRemoveHotkeyButton().IsEnabled(true);
                     return 0;
                 }
@@ -1458,14 +1458,14 @@ namespace winrt::Winvert4::implementation
                 if (wParam != VK_SHIFT && wParam != VK_CONTROL && wParam != VK_MENU && wParam != VK_LWIN && wParam != VK_RWIN) {
                     switch (pThis->m_rebindingState) {
                     case RebindingState::Invert:    pThis->m_hotkeyInvertMod = newMod; pThis->m_hotkeyInvertVk = static_cast<UINT>(wParam); break;
-                    case RebindingState::Grayscale: pThis->m_hotkeyGrayscaleMod = newMod; pThis->m_hotkeyGrayscaleVk = static_cast<UINT>(wParam); break;
+                    case RebindingState::Filter:    pThis->m_hotkeyFilterMod = newMod; pThis->m_hotkeyFilterVk = static_cast<UINT>(wParam); break;
                     case RebindingState::Remove:    pThis->m_hotkeyRemoveMod = newMod; pThis->m_hotkeyRemoveVk = static_cast<UINT>(wParam); break;
                     }
                     pThis->m_rebindingState = RebindingState::None;
                     pThis->RegisterAllHotkeys();
                     pThis->RebindStatusText().Text(L"Hotkey updated!");
                     pThis->RebindInvertHotkeyButton().IsEnabled(true);
-                    pThis->RebindGrayscaleHotkeyButton().IsEnabled(true);
+                    pThis->RebindFilterHotkeyButton().IsEnabled(true);
                     pThis->RebindRemoveHotkeyButton().IsEnabled(true);
                     return 0;
                 }
@@ -1479,8 +1479,8 @@ namespace winrt::Winvert4::implementation
                 if (wParam == HOTKEY_INVERT_ID) {
                 pThis->OnInvertHotkeyPressed();
                 }
-                else if (wParam == HOTKEY_GRAYSCALE_ID) {
-                pThis->OnGrayscaleHotkeyPressed();
+                else if (wParam == HOTKEY_FILTER_ID) {
+                pThis->OnFilterHotkeyPressed();
                 }
                 else if (wParam == HOTKEY_REMOVE_ID) {
                 pThis->OnRemoveHotkeyPressed();

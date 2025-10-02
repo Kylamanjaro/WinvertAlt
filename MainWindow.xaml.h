@@ -34,7 +34,7 @@ namespace winrt::Winvert4::implementation
         void LumaWeight_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
         void ShowFpsToggle_Toggled(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void RebindInvertHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
-        void RebindGrayscaleHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void RebindFilterHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void RebindRemoveHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void SelectionColorPicker_ColorChanged(winrt::Microsoft::UI::Xaml::Controls::ColorPicker const&, winrt::Microsoft::UI::Xaml::Controls::ColorChangedEventArgs const&);
         // Color Mapping
@@ -136,16 +136,16 @@ namespace winrt::Winvert4::implementation
         bool m_controlPanelShownYet{ false };
 
         // --- Hotkeys ---
-        enum class RebindingState { None, Invert, Grayscale, Remove };
+        enum class RebindingState { None, Invert, Filter, Remove };
         RebindingState m_rebindingState{ RebindingState::None };
         UINT m_hotkeyInvertMod{ MOD_WIN | MOD_SHIFT };
         UINT m_hotkeyInvertVk{ 'I' };
-        UINT m_hotkeyGrayscaleMod{ MOD_WIN | MOD_SHIFT };
-        UINT m_hotkeyGrayscaleVk{ 'F' };
+        UINT m_hotkeyFilterMod{ MOD_WIN | MOD_SHIFT };
+        UINT m_hotkeyFilterVk{ 'F' };
         UINT m_hotkeyRemoveMod{ MOD_WIN | MOD_SHIFT };
         UINT m_hotkeyRemoveVk{ 'R' };
 
-        enum class PendingEffect { None, Invert, Grayscale, Favorite };
+        enum class PendingEffect { None, Invert, Filter };
 
         // Favorite filter index (tracked independently of UI accessor to avoid header deps)
         int FavoriteFilterIndex() const;
@@ -154,7 +154,7 @@ namespace winrt::Winvert4::implementation
 
         void RegisterAllHotkeys();
         void OnInvertHotkeyPressed();
-        void OnGrayscaleHotkeyPressed();
+        void OnFilterHotkeyPressed();
         void OnRemoveHotkeyPressed();
 
         // --- Per-window state ---
@@ -206,10 +206,10 @@ namespace winrt::Winvert4::implementation
         winrt::Microsoft::UI::Xaml::Media::ImageSource m_brightnessOffIconSource{ nullptr };
         winrt::Microsoft::UI::Xaml::Media::ImageSource m_hideIconSource{ nullptr };
         winrt::Microsoft::UI::Xaml::Media::ImageSource m_showIconSource{ nullptr };
+        winrt::Microsoft::UI::Xaml::Media::ImageSource m_colorMappingOnIconSource{ nullptr };
+        winrt::Microsoft::UI::Xaml::Media::ImageSource m_colorMappingOffIconSource{ nullptr };
         winrt::Microsoft::UI::Xaml::Media::ImageSource m_invertOnIconSource{ nullptr };
         winrt::Microsoft::UI::Xaml::Media::ImageSource m_invertOffIconSource{ nullptr };
-        winrt::Microsoft::UI::Xaml::Media::ImageSource m_grayscaleOnIconSource{ nullptr };
-        winrt::Microsoft::UI::Xaml::Media::ImageSource m_grayscaleOffIconSource{ nullptr };
 
         // --- Color Mapping UI state ---
         int m_selectedColorMapRowIndex{ -1 };

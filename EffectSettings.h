@@ -16,7 +16,6 @@ struct EffectSettings
 {
     // Basic Effects
     bool isInvertEffectEnabled = false;
-    bool isGrayscaleEffectEnabled = false;
 
     // Brightness Protection
     bool isBrightnessProtectionEnabled = false;
@@ -33,7 +32,7 @@ struct EffectSettings
     };
     float colorOffset[4]{ 0,0,0,0 };
 
-    // Luminance weights for brightness protection and grayscale
+    // Luminance weights for brightness protection and color effects
     float lumaWeights[3]{ 0.2126f, 0.7152f, 0.0722f };
 
     // Diagnostics
