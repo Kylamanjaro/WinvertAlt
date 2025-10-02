@@ -129,7 +129,7 @@ namespace winrt::Winvert4::implementation
         bool m_lastRemovalViaUI{ false };
         bool m_lastRemovalInitiatedByHotkey{ false };
         bool m_keepFiltersFlyoutOpenNext{ false };
-        float m_lumaWeights[3]{ 0.2126f, 0.7152f, 0.0722f }; // Global setting, copied to new windows
+        float m_lumaWeights[3]{ 0.2126f, 0.7152f, 0.0722f }; // Global setting (BT.709), copied to new windows
         bool m_showSelectionInstructions{ true }; // From reference
 
         // --- Settings ---

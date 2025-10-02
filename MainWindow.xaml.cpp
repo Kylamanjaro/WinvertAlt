@@ -23,6 +23,9 @@ namespace
     constexpr int HOTKEY_INVERT_ID = 1;
     constexpr int HOTKEY_GRAYSCALE_ID = 2;
     constexpr int HOTKEY_REMOVE_ID = 3;
+
+    // Default luminance weights (BT.709 for sRGB)
+    constexpr float kDefaultLumaWeights[3] = { 0.2126f, 0.7152f, 0.0722f };
 }
 
 std::vector<RECT> winrt::Winvert4::implementation::MainWindow::s_monitorRects;
@@ -113,9 +116,9 @@ namespace winrt::Winvert4::implementation
 
             // Grayscale (luma)
             const float M_GRAY[16] = {
-                0.3f,0.3f,0.3f,0,
-                0.6f,0.6f,0.6f,0,
-                0.1f,0.1f,0.1f,0,
+                kDefaultLumaWeights[0], kDefaultLumaWeights[0], kDefaultLumaWeights[0], 0,
+                kDefaultLumaWeights[1], kDefaultLumaWeights[1], kDefaultLumaWeights[1], 0,
+                kDefaultLumaWeights[2], kDefaultLumaWeights[2], kDefaultLumaWeights[2], 0,
                 0,0,0,1
             };
             add(L"Grayscale", M_GRAY, OFF0);
@@ -226,6 +229,11 @@ namespace winrt::Winvert4::implementation
         UpdateUIState();
         UpdateAllHotkeyText();
         SetWindowSize(360, 120); // Prepare initial size, but keep window hidden
+
+        // Set initial UI values from our master defaults
+        LumaRNumberBox().Value(m_lumaWeights[0]);
+        LumaGNumberBox().Value(m_lumaWeights[1]);
+        LumaBNumberBox().Value(m_lumaWeights[2]);
 
         m_isAppInitialized = true;
 
@@ -500,7 +508,7 @@ void winrt::Winvert4::implementation::MainWindow::ComposeSimpleMatrix(float (&ou
     outOff[0] += co; outOff[1] += co; outOff[2] += co;
 
     float s = m_simpleSaturation;
-    const float Lr = 0.2126f, Lg = 0.7152f, Lb = 0.0722f;
+    const float Lr = kDefaultLumaWeights[0], Lg = kDefaultLumaWeights[1], Lb = kDefaultLumaWeights[2];
     float satMat[16] = { 0 };
     satMat[15] = 1.0f;
     satMat[0] = (1 - s) * Lr + s;  satMat[1] = (1 - s) * Lg;      satMat[2] = (1 - s) * Lb;
