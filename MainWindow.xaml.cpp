@@ -2033,6 +2033,8 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterButton_Click(winr
     memcpy(m_windowSettings[idx].colorOffset, offset, sizeof(offset));
     UpdateSettingsForGroup(idx);
     m_isPreviewActive = true;
+    // Ensure the target windows are visible during preview (even on settings page)
+    SetHiddenForGroup(idx, false);
 }
 
 void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -2059,11 +2061,21 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
 
     int idx = SelectedTabIndex();
     if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
-
-    m_windowSettings[idx].isCustomEffectActive = true;
-    memcpy(m_windowSettings[idx].colorMat, mat4, sizeof(mat4));
-    memcpy(m_windowSettings[idx].colorOffset, offset, sizeof(offset));
-    UpdateSettingsForGroup(idx);
+    // Apply only if the new values differ from current settings
+    auto equalWithEps = [](const float* a, const float* b, size_t n, float eps)
+    {
+        for (size_t i = 0; i < n; ++i) { if (fabs(a[i] - b[i]) > eps) return false; }
+        return true;
+    };
+    bool sameMat = equalWithEps(mat4, m_windowSettings[idx].colorMat, 16, 1e-6f);
+    bool sameOff = equalWithEps(offset, m_windowSettings[idx].colorOffset, 4, 1e-6f);
+    if (!sameMat || !sameOff || !m_windowSettings[idx].isCustomEffectActive)
+    {
+        m_windowSettings[idx].isCustomEffectActive = true;
+        memcpy(m_windowSettings[idx].colorMat, mat4, sizeof(mat4));
+        memcpy(m_windowSettings[idx].colorOffset, offset, sizeof(offset));
+        UpdateSettingsForGroup(idx);
+    }
 
     if (idx < static_cast<int>(m_hasPreviewBackup.size()) && m_hasPreviewBackup[idx])
     {
