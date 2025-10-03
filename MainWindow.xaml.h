@@ -31,6 +31,7 @@ namespace winrt::Winvert4::implementation
         void CollapseAllSettingsExpanders();
         void UpdateSettingsColumnsForWindowState();
         void CustomFiltersExpander_Collapsed(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::ExpanderCollapsedEventArgs const&);
+        void CustomFiltersExpander_Expanding(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::ExpanderExpandingEventArgs const&);
         void LumaWeight_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
         void BrightnessDelay_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
         void ShowFpsToggle_Toggled(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);

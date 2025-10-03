@@ -181,7 +181,8 @@
                             <Expander x:Name="CustomFiltersExpander"
                                       HorizontalAlignment="Stretch"
                                       HorizontalContentAlignment="Stretch"
-                                      Collapsed="CustomFiltersExpander_Collapsed">
+                                      Collapsed="CustomFiltersExpander_Collapsed"
+                                      Expanding="CustomFiltersExpander_Expanding">
                                 <Expander.Header>
                                     <TextBlock Text="Custom filters" FontWeight="SemiBold"/>
                                 </Expander.Header>

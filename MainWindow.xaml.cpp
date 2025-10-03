@@ -163,64 +163,6 @@ namespace winrt::Winvert4::implementation
             };
             add(L"Night Shift", M_NIGHT, OFF0);
 
-            // Contrast +20% (about 1.2x around 0.5)
-            const float M_CONTRAST[16] = {
-                1.20f,0,0,0,
-                0,1.20f,0,0,
-                0,0,1.20f,0,
-                0,0,0,1
-            };
-            const float OFF_CONTRAST[4] = { -0.10f, -0.10f, -0.10f, 0 };
-            add(L"Contrast +20%", M_CONTRAST, OFF_CONTRAST);
-
-            // Saturation +50%
-            const float M_SAT_P50[16] = {
-                1.3505f,-0.2935f,-0.0570f,0,
-               -0.1495f, 1.2065f,-0.0570f,0,
-               -0.1495f,-0.2935f, 1.4430f,0,
-                0,0,0,1
-            };
-            add(L"Saturation +50%", M_SAT_P50, OFF0);
-
-            // Hue Rotate 30° (approximate)
-            const float M_HUE_30[16] = {
-                0.7875f,-0.2615f, 0.4736f,0,
-                0.1000f, 1.0310f,-0.1319f,0,
-               -0.3650f, 0.4535f, 0.9110f,0,
-                0,0,0,1
-            };
-            add(L"Hue +30°", M_HUE_30, OFF0);
-
-            // Color Blindness Simulation (Protanopia)
-            const float M_PROT[16] = {
-                0.152286f, 1.052583f,-0.204868f,0,
-                0.0722503f, 0.786281f, 0.099216f,0,
-               -0.003882f,-0.048116f, 1.051998f,0,
-                0,0,0,1
-            };
-            add(L"Protanopia (sim)", M_PROT, OFF0);
-
-            // Deuteranopia
-            const float M_DEUT[16] = {
-                0.367322f, 0.860646f,-0.227968f,0,
-                0.280085f, 0.672501f, 0.047413f,0,
-               -0.011820f, 0.042940f, 0.968881f,0,
-                0,0,0,1
-            };
-            add(L"Deuteranopia (sim)", M_DEUT, OFF0);
-
-            // Tritanopia
-            const float M_TRIT[16] = {
-                1.255528f,-0.076749f,-0.178779f,0,
-               -0.078411f, 0.930809f, 0.147602f,0,
-                0.004733f, 0.691367f, 0.303900f,0,
-                0,0,0,1
-            };
-            add(L"Tritanopia (sim)", M_TRIT, OFF0);
-
-            // Set default favorite to first preset
-            m_favoriteFilterIndex = 0;
-
             // Refresh UI
             UpdateSavedFiltersCombo();
             UpdateFilterDropdown();
@@ -400,7 +342,7 @@ namespace winrt::Winvert4::implementation
         // Adjust About panel visibility/width based on maximize state
         UpdateSettingsColumnsForWindowState();
 
-        // Default all settings sections (keep Custom Filters open) and reset sliders to neutral
+        // Default all settings sections and reset sliders to neutral
         CollapseAllSettingsExpanders();
         // Reset simple sliders to neutral state on entry
         m_isUpdatingSimpleUI = true;
@@ -517,16 +459,29 @@ namespace winrt::Winvert4::implementation
         if (SelectionColorExpander()) SelectionColorExpander().IsExpanded(false);
         if (UpdateRateExpander()) UpdateRateExpander().IsExpanded(false);
         if (HotkeysExpander()) HotkeysExpander().IsExpanded(false);
-        // Keep Custom Filters expanded so sliders are immediately usable
-        if (CustomFiltersExpander()) CustomFiltersExpander().IsExpanded(true);
-        // Keep editor panel visible
-        if (FilterEditorPanel()) FilterEditorPanel().Visibility(Visibility::Visible);
+        // Custom Filters collapsed by default on entry
+        if (CustomFiltersExpander()) CustomFiltersExpander().IsExpanded(false);
+        if (FilterEditorPanel()) FilterEditorPanel().Visibility(Visibility::Collapsed);
     }
 
     void winrt::Winvert4::implementation::MainWindow::CustomFiltersExpander_Collapsed(IInspectable const&, Microsoft::UI::Xaml::Controls::ExpanderCollapsedEventArgs const&)
     {
         // Hide the editor when the Custom Filters expander collapses
         if (auto panel = FilterEditorPanel()) panel.Visibility(Visibility::Collapsed);
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::CustomFiltersExpander_Expanding(IInspectable const&, Microsoft::UI::Xaml::Controls::ExpanderExpandingEventArgs const&)
+    {
+        // When expanded, always show the editor and default to sliders visible
+        if (auto panel = FilterEditorPanel()) panel.Visibility(Visibility::Visible);
+        // Default to simple sliders (Advanced off)
+        if (auto t = AdvancedMatrixToggle()) t.IsOn(false);
+        if (auto panelSliders = SimpleSlidersPanel()) panelSliders.Visibility(Visibility::Visible);
+        if (auto root = this->Content().try_as<FrameworkElement>())
+        {
+            if (auto adv = root.FindName(L"AdvancedMatrixPanel").try_as<Controls::StackPanel>())
+                adv.Visibility(Visibility::Collapsed);
+        }
     }
 
     // --- Simple vs Advanced filter mode ---
@@ -2167,6 +2122,8 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
     }
     bool anyPreview = false; for (bool b : m_hasPreviewBackup) { if (b) { anyPreview = true; break; } }
     m_isPreviewActive = anyPreview;
+    // Re-hide the windows shown for preview
+    SetHiddenForGroup(idx, true);
 }
 
 void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
