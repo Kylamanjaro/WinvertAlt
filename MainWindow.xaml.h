@@ -245,6 +245,12 @@ namespace winrt::Winvert4::implementation
         HWND m_sampleOverlayHwnd{ nullptr };
         int  m_sampleOverlaySize{ 160 };  // pixels diameter
         int  m_sampleOverlayZoom{ 4 };    // scale factor
+        // Overlay capture cache and timing
+        HDC      m_sampleMemDC{ nullptr };
+        HBITMAP  m_sampleMemBmp{ nullptr };
+        int      m_sampleMemW{ 0 }, m_sampleMemH{ 0 };
+        LARGE_INTEGER m_qpcFreqSample{ 0 };
+        unsigned long long m_lastOverlayDrawQpc{ 0 };
     };
 }
 

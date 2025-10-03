@@ -1562,15 +1562,20 @@ namespace winrt::Winvert4::implementation
         static ATOM atom = 0; if (!atom) atom = RegisterClassW(&wc);
         int sz = m_sampleOverlaySize;
         m_sampleOverlayHwnd = CreateWindowExW(
-            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
+            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_LAYERED,
             wc.lpszClassName, L"", WS_POPUP,
             0, 0, sz, sz, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
         if (m_sampleOverlayHwnd)
         {
             HRGN rgn = CreateEllipticRgn(0, 0, sz, sz);
             SetWindowRgn(m_sampleOverlayHwnd, rgn, FALSE);
+            // Opaque layered window, excluded from SRCCOPY captures
+            SetLayeredWindowAttributes(m_sampleOverlayHwnd, 0, 255, LWA_ALPHA);
             ShowWindow(m_sampleOverlayHwnd, SW_SHOWNOACTIVATE);
         }
+        // Init perf timer
+        if (m_qpcFreqSample.QuadPart == 0) QueryPerformanceFrequency(&m_qpcFreqSample);
+        QueryPerformanceCounter(reinterpret_cast<LARGE_INTEGER*>(&m_lastOverlayDrawQpc));
     }
 
     void winrt::Winvert4::implementation::MainWindow::MoveSampleOverlay(POINT ptScreen)
@@ -1582,29 +1587,42 @@ namespace winrt::Winvert4::implementation
         int y = ptScreen.y - sz / 2;
         SetWindowPos(m_sampleOverlayHwnd, HWND_TOPMOST, x, y, sz, sz, SWP_NOACTIVATE | SWP_NOSIZE | SWP_SHOWWINDOW);
 
-        // Draw magnified content captured from the screen beneath (avoid capturing our own overlay)
+        // Throttle updates to reduce overhead
+        LARGE_INTEGER now{}; QueryPerformanceCounter(&now);
+        const double elapsedMs = (m_qpcFreqSample.QuadPart > 0)
+            ? (1000.0 * (now.QuadPart - (LONGLONG)m_lastOverlayDrawQpc) / (double)m_qpcFreqSample.QuadPart)
+            : 1000.0;
+        if (elapsedMs < 5.0) return; // cap to ~200 FPS
+        m_lastOverlayDrawQpc = (unsigned long long)now.QuadPart;
+
         HDC scrDC = GetDC(nullptr);
         int zoom = (m_sampleOverlayZoom > 0) ? m_sampleOverlayZoom : 4;
-        int srcW = sz / zoom; int srcH = sz / zoom;
+        int srcW = (std::max)(1, sz / zoom); int srcH = (std::max)(1, sz / zoom);
         int sx = ptScreen.x - srcW / 2; int sy = ptScreen.y - srcH / 2;
 
-        // Create memory surface and capture screen region (with CAPTUREBLT)
-        HDC memDC = CreateCompatibleDC(scrDC);
-        HBITMAP memBmp = CreateCompatibleBitmap(scrDC, srcW, srcH);
-        HGDIOBJ oldBmp = SelectObject(memDC, memBmp);
-        // Temporarily hide overlay to prevent self-capture
+        // Ensure memory surface allocated once (realloc on size change)
+        if (!m_sampleMemDC) m_sampleMemDC = CreateCompatibleDC(scrDC);
+        if (!m_sampleMemBmp || m_sampleMemW != srcW || m_sampleMemH != srcH)
+        {
+            if (m_sampleMemBmp) { DeleteObject(m_sampleMemBmp); m_sampleMemBmp = nullptr; }
+            m_sampleMemBmp = CreateCompatibleBitmap(scrDC, srcW, srcH);
+            m_sampleMemW = srcW; m_sampleMemH = srcH;
+        }
+        HGDIOBJ oldBmp = SelectObject(m_sampleMemDC, m_sampleMemBmp);
+        // Temporarily hide the overlay to avoid self-capture, then use CAPTUREBLT to get composed desktop
         ShowWindow(m_sampleOverlayHwnd, SW_HIDE);
-        BitBlt(memDC, 0, 0, srcW, srcH, scrDC, sx, sy, SRCCOPY | 0x40000000 /*CAPTUREBLT*/);
+        BitBlt(m_sampleMemDC, 0, 0, srcW, srcH, scrDC, sx, sy, SRCCOPY | 0x40000000 /*CAPTUREBLT*/);
         ShowWindow(m_sampleOverlayHwnd, SW_SHOWNOACTIVATE);
 
-        // Paint into the overlay
+        // Paint into the overlay using fast mode while moving
         HDC wndDC = GetDC(m_sampleOverlayHwnd);
-        SetStretchBltMode(wndDC, HALFTONE);
+        // Use COLORONCOLOR when motion is recent; HALFTONE if slowed down (>70ms)
+        SetStretchBltMode(wndDC, elapsedMs > 70.0 ? HALFTONE : COLORONCOLOR);
         // Clear background
         HBRUSH hbr = CreateSolidBrush(RGB(0,0,0)); RECT rc{0,0,sz,sz}; FillRect(wndDC, &rc, hbr); DeleteObject(hbr);
-        StretchBlt(wndDC, 0, 0, sz, sz, memDC, 0, 0, srcW, srcH, SRCCOPY);
+        StretchBlt(wndDC, 0, 0, sz, sz, m_sampleMemDC, 0, 0, srcW, srcH, SRCCOPY);
 
-        // Determine border color from the pixel under cursor
+        // Border color from pixel under cursor
         COLORREF cr = GetPixel(scrDC, ptScreen.x, ptScreen.y);
         HPEN pen = CreatePen(PS_SOLID, 2, cr == CLR_INVALID ? RGB(255,255,255) : cr);
         HPEN oldPen = (HPEN)SelectObject(wndDC, pen);
@@ -1613,9 +1631,7 @@ namespace winrt::Winvert4::implementation
         SelectObject(wndDC, oldPen); SelectObject(wndDC, oldb); DeleteObject(pen);
 
         // Cleanup
-        SelectObject(memDC, oldBmp);
-        DeleteObject(memBmp);
-        DeleteDC(memDC);
+        SelectObject(m_sampleMemDC, oldBmp);
         ReleaseDC(m_sampleOverlayHwnd, wndDC);
         ReleaseDC(nullptr, scrDC);
     }
@@ -1627,6 +1643,8 @@ namespace winrt::Winvert4::implementation
             DestroyWindow(m_sampleOverlayHwnd);
             m_sampleOverlayHwnd = nullptr;
         }
+        if (m_sampleMemBmp) { DeleteObject(m_sampleMemBmp); m_sampleMemBmp = nullptr; }
+        if (m_sampleMemDC)  { DeleteDC(m_sampleMemDC); m_sampleMemDC = nullptr; }
     }
 
     HWND MainWindow::SelectedWindowHwnd()
