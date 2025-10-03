@@ -500,9 +500,15 @@ namespace winrt::Winvert4::implementation
     void winrt::Winvert4::implementation::MainWindow::AdvancedMatrixToggle_Toggled(IInspectable const&, RoutedEventArgs const&)
     {
         bool advanced = AdvancedMatrixToggle().IsOn();
-        // Keep the header (with toggle) visible; only hide the sliders panel when advanced
+        // Keep the header (with toggle) visible; alternate sliders vs advanced matrix panel
         if (auto panel = SimpleSlidersPanel()) panel.Visibility(advanced ? Visibility::Collapsed : Visibility::Visible);
-        if (auto grid = FilterMatrixGrid()) grid.Visibility(advanced ? Visibility::Visible : Visibility::Collapsed);
+        // Advanced matrix container includes labels + grid so labels don't reserve space when hidden
+        Controls::StackPanel advPanel{ nullptr };
+        if (auto root = this->Content().try_as<FrameworkElement>())
+        {
+            advPanel = root.FindName(L"AdvancedMatrixPanel").try_as<Controls::StackPanel>();
+        }
+        if (advPanel) advPanel.Visibility(advanced ? Visibility::Visible : Visibility::Collapsed);
     }
 
     void winrt::Winvert4::implementation::MainWindow::ComposeSimpleMatrix(float (&outMat)[16], float (&outOff)[4])
@@ -1531,10 +1537,10 @@ void winrt::Winvert4::implementation::MainWindow::AddNewFilterButton_Click(winrt
     }
 
     // Seed identity 5x5: diag 1s for RGBA, last column offsets 0, last row 0,0,0,0,1
-    if (grid)
-    {
-        for (auto child : grid.Children())
+        if (grid)
         {
+            for (auto child : grid.Children())
+            {
             auto tb = child.try_as<Microsoft::UI::Xaml::Controls::TextBox>();
             if (!tb) continue;
             int r = Microsoft::UI::Xaml::Controls::Grid::GetRow(tb);
@@ -1545,11 +1551,16 @@ void winrt::Winvert4::implementation::MainWindow::AddNewFilterButton_Click(winrt
             wchar_t buf[32]; swprintf_s(buf, L"%.3f", v);
             tb.Text(buf);
         }
-        if (auto tbName = FilterNameTextBox())
+        // Seed default proposed name by selecting matching item if present (editable text not assumed)
+        if (auto combo = SavedFiltersComboBox())
         {
             std::wstring base = L"Filter ";
             base += std::to_wstring(m_savedFilters.size() + 1);
-            tbName.Text(base);
+            // If an item with this name exists, select it; otherwise leave selection unchanged
+            for (int i = 0; i < static_cast<int>(m_savedFilters.size()); ++i)
+            {
+                if (m_savedFilters[i].name == base) { combo.SelectedIndex(i); break; }
+            }
         }
     }
 }
@@ -1588,10 +1599,14 @@ void winrt::Winvert4::implementation::MainWindow::SaveFilterButton_Click(winrt::
 
     // Save or update saved filter (no auto-apply)
     std::wstring name = L"Untitled";
-    if (auto tbName = FilterNameTextBox())
+    if (auto combo = SavedFiltersComboBox())
     {
-        auto s = std::wstring(tbName.Text());
-        if (!s.empty()) name = s;
+        // Prefer selected item text (ComboBox may not be editable in WinUI 3)
+        if (combo.SelectedIndex() >= 0)
+        {
+            auto hs = unbox_value<winrt::hstring>(combo.SelectedItem());
+            name = std::wstring(hs);
+        }
     }
 
     int existing = -1;
@@ -1618,7 +1633,14 @@ void winrt::Winvert4::implementation::MainWindow::DeleteFilterButton_Click(winrt
 {
     // Delete selected saved filter
     std::wstring name;
-    if (auto tbName = FilterNameTextBox()) name = std::wstring(tbName.Text());
+    if (auto combo = SavedFiltersComboBox())
+    {
+        if (combo.SelectedIndex() >= 0)
+        {
+            auto hs = unbox_value<winrt::hstring>(combo.SelectedItem());
+            name = std::wstring(hs);
+        }
+    }
     if (name.empty()) return;
     m_savedFilters.erase(std::remove_if(m_savedFilters.begin(), m_savedFilters.end(), [&](const SavedFilter& f){return f.name==name;}), m_savedFilters.end());
     UpdateSavedFiltersCombo();
@@ -1659,7 +1681,7 @@ void winrt::Winvert4::implementation::MainWindow::SavedFiltersComboBox_Selection
     // Ensure editor visible
     if (auto panel = FilterEditorPanel()) panel.Visibility(Visibility::Visible);
     if (auto exp = CustomFiltersExpander()) exp.IsExpanded(true);
-    if (auto tbName = FilterNameTextBox()) tbName.Text(sf.name);
+    // Ensure the editor is tied to selected filter; editable combo will show selection automatically
 
     // Write values into 5x5 grid
     for (auto child : grid.Children())
@@ -1811,7 +1833,7 @@ void winrt::Winvert4::implementation::MainWindow::UpdateSavedFiltersCombo()
         combo.Items().Clear();
         for (auto& sf : m_savedFilters)
         {
-            combo.Items().Append(box_value(sf.name));
+        combo.Items().Append(box_value(winrt::hstring{ sf.name }));
         }
     }
     if (favCombo)
@@ -1819,7 +1841,7 @@ void winrt::Winvert4::implementation::MainWindow::UpdateSavedFiltersCombo()
         favCombo.Items().Clear();
         for (auto& sf : m_savedFilters)
         {
-            favCombo.Items().Append(box_value(sf.name));
+            favCombo.Items().Append(box_value(winrt::hstring{ sf.name }));
         }
         // Clamp favorite index and apply selection
         if (m_favoriteFilterIndex < 0 || m_favoriteFilterIndex >= static_cast<int>(m_savedFilters.size()))
