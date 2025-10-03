@@ -1135,6 +1135,17 @@ namespace winrt::Winvert4::implementation
         m_pendingEffect = PendingEffect::None; // Reset for next time
 
         // 3) Create one or more effect windows depending on monitor intersections
+        // Track if a favorite filter was applied so the flyout reflects it
+        int appliedFavIndex = -1;
+        if (settings.isCustomEffectActive)
+        {
+            // If we just applied a favorite filter via hotkey, remember which one
+            int fav = FavoriteFilterIndex();
+            if (fav >= 0 && fav < static_cast<int>(m_savedFilters.size()))
+            {
+                appliedFavIndex = fav;
+            }
+        }
         std::vector<RECT> splits;
         if (m_outputManager) m_outputManager->GetIntersectingRects(sel, splits);
         if (splits.empty()) splits.push_back(sel);
@@ -1151,6 +1162,23 @@ namespace winrt::Winvert4::implementation
         newTab.Header(winrt::box_value(L"Region " + std::to_wstring(m_effectWindows.size() + 1)));
         RegionsTabView().TabItems().Append(newTab);
         RegionsTabView().SelectedItem(newTab);
+        // If a favorite filter was applied when creating this region, mirror that
+        // in the Filters flyout selection state for this new tab so the UI matches.
+        if (appliedFavIndex >= 0)
+        {
+            int newIdx = SelectedTabIndex();
+            if (newIdx >= 0)
+            {
+                if (static_cast<int>(m_tabFilterSelections.size()) <= newIdx)
+                    m_tabFilterSelections.resize(newIdx + 1);
+                m_tabFilterSelections[newIdx].assign(m_savedFilters.size(), false);
+                if (appliedFavIndex < static_cast<int>(m_tabFilterSelections[newIdx].size()))
+                {
+                    m_tabFilterSelections[newIdx][appliedFavIndex] = true;
+                }
+                UpdateFilterDropdown();
+            }
+        }
 
         // Create extra windows for additional monitors
         std::vector<std::unique_ptr<EffectWindow>> extras;
