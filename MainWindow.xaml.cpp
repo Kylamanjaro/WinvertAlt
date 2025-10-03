@@ -574,6 +574,15 @@ namespace winrt::Winvert4::implementation
                 tb.Width(60); tb.Height(32);
                 Microsoft::UI::Xaml::Controls::Grid::SetRow(tb, r);
                 Microsoft::UI::Xaml::Controls::Grid::SetColumn(tb, c);
+                // Lock 5th column to constants 0,0,0,0,1
+                if (c == 4)
+                {
+                    tb.IsReadOnly(true);
+                    tb.IsTabStop(false);
+                    double v = (r == 4) ? 1.0 : 0.0;
+                    wchar_t buf[32]; swprintf_s(buf, L"%.3f", v);
+                    tb.Text(buf);
+                }
                 grid.Children().Append(tb);
             }
         }
@@ -594,7 +603,7 @@ namespace winrt::Winvert4::implementation
             try {
                 float v = std::stof(std::wstring(tb.Text()));
                 if (r >= 0 && r < 4 && c >= 0 && c < 4) outMat[r * 4 + c] = v;
-                else if (r >= 0 && r < 4 && c == 4) outOff[r] = v;
+                else if (r == 4 && c >= 0 && c < 4) outOff[c] = v; // offsets now in 5th row
             } catch (...) {}
         }
     }
@@ -679,8 +688,9 @@ namespace winrt::Winvert4::implementation
             int c = Microsoft::UI::Xaml::Controls::Grid::GetColumn(tb);
             double v = 0.0;
             if (r < 4 && c < 4) v = mat[r * 4 + c];
-            else if (r < 4 && c == 4) v = off[r];
-            else if (r == 4 && c == 4) v = 1.0;
+            else if (r == 4 && c < 4) v = off[c];              // offsets now in last row
+            else if (c == 4 && r < 4) v = 0.0;                 // lock last column to 0 for first 4 rows
+            else if (r == 4 && c == 4) v = 1.0;                // bottom-right constant 1
             wchar_t buf[32]; swprintf_s(buf, L"%.3f", v);
             tb.Text(buf);
         }
@@ -1715,9 +1725,9 @@ void winrt::Winvert4::implementation::MainWindow::SaveFilterButton_Click(winrt::
             {
                 mat4[r * 4 + c] = v; // 4x4 coefficients
             }
-            else if (r >= 0 && r < 4 && c == 4)
+            else if (r == 4 && c >= 0 && c < 4)
             {
-                offset[r] = v; // last column is offset for each channel
+                offset[c] = v; // last row is offset for each channel
             }
             // row 4 (constant row) ignored; we keep it as 0,0,0,0,1 visually
         } catch (...) { /* ignore parse errors */ }
@@ -1790,6 +1800,17 @@ void winrt::Winvert4::implementation::MainWindow::ClearFilterButton_Click(winrt:
         wchar_t buf[32]; swprintf_s(buf, L"%.3f", v);
         tb.Text(buf);
     }
+    // Also reset simple sliders to defaults to keep modes in sync
+    m_simpleBrightness = 0.0f;
+    m_simpleContrast = 1.0f;
+    m_simpleSaturation = 1.0f;
+    m_simpleTemperature = 0.0f;
+    m_simpleTint = 0.0f;
+    if (auto s = BrightnessSlider()) s.Value(m_simpleBrightness);
+    if (auto s = ContrastSlider()) s.Value(m_simpleContrast);
+    if (auto s = SaturationSlider()) s.Value(m_simpleSaturation);
+    if (auto s = TemperatureSlider()) s.Value(m_simpleTemperature);
+    if (auto s = TintSlider()) s.Value(m_simpleTint);
 }
 
 void winrt::Winvert4::implementation::MainWindow::SavedFiltersComboBox_SelectionChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&)
@@ -2008,7 +2029,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterButton_Click(winr
         try {
             float v = std::stof(std::wstring(tb.Text()));
             if (r >= 0 && r < 4 && c >= 0 && c < 4) mat4[r * 4 + c] = v;
-            else if (r >= 0 && r < 4 && c == 4) offset[r] = v;
+            else if (r == 4 && c >= 0 && c < 4) offset[c] = v; // last row holds offsets
         } catch (...) {}
     }
 
@@ -2037,6 +2058,48 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterButton_Click(winr
     SetHiddenForGroup(idx, false);
 }
 
+void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Checked(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+{
+    // Start preview: backup current settings, disable other effects, apply matrix from grid
+    auto grid = FilterMatrixGrid(); if (!grid) return;
+    float mat4[16] = { 0 }; float offset[4] = { 0 };
+    for (int i = 0; i < 4; ++i) mat4[i * 4 + i] = 1.0f;
+    for (auto child : grid.Children())
+    {
+        auto tb = child.try_as<TextBox>(); if (!tb) continue;
+        int r = Microsoft::UI::Xaml::Controls::Grid::GetRow(tb);
+        int c = Microsoft::UI::Xaml::Controls::Grid::GetColumn(tb);
+        try { float v = std::stof(std::wstring(tb.Text())); if (r < 4 && c < 4) mat4[r*4+c] = v; else if (r < 4 && c == 4) offset[r] = v; } catch (...) {}
+    }
+    int idx = SelectedTabIndex(); if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
+    if (static_cast<int>(m_hasPreviewBackup.size()) < static_cast<int>(m_windowSettings.size())) { m_hasPreviewBackup.resize(m_windowSettings.size(), false); m_previewBackup.resize(m_windowSettings.size()); }
+    if (!m_hasPreviewBackup[idx]) { m_previewBackup[idx] = m_windowSettings[idx]; m_hasPreviewBackup[idx] = true; }
+    // Disable other effects during preview
+    m_windowSettings[idx].isInvertEffectEnabled = false;
+    m_windowSettings[idx].isBrightnessProtectionEnabled = false;
+    m_windowSettings[idx].isColorMappingEnabled = false;
+    m_windowSettings[idx].isCustomEffectActive = true;
+    memcpy(m_windowSettings[idx].colorMat, mat4, sizeof(mat4));
+    memcpy(m_windowSettings[idx].colorOffset, offset, sizeof(offset));
+    UpdateSettingsForGroup(idx);
+    m_isPreviewActive = true;
+    SetHiddenForGroup(idx, false);
+}
+
+void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+{
+    // End preview: restore backup for this tab if present
+    int idx = SelectedTabIndex(); if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
+    if (idx < static_cast<int>(m_hasPreviewBackup.size()) && m_hasPreviewBackup[idx])
+    {
+        m_windowSettings[idx] = m_previewBackup[idx];
+        m_hasPreviewBackup[idx] = false;
+        UpdateSettingsForGroup(idx);
+    }
+    bool anyPreview = false; for (bool b : m_hasPreviewBackup) { if (b) { anyPreview = true; break; } }
+    m_isPreviewActive = anyPreview;
+}
+
 void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
 {
     // Read current grid and permanently apply to selected window
@@ -2055,7 +2118,7 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
         try {
             float v = std::stof(std::wstring(tb.Text()));
             if (r >= 0 && r < 4 && c >= 0 && c < 4) mat4[r * 4 + c] = v;
-            else if (r >= 0 && r < 4 && c == 4) offset[r] = v;
+            else if (r == 4 && c >= 0 && c < 4) offset[c] = v;
         } catch (...) {}
     }
 
