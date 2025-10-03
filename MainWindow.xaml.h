@@ -236,6 +236,15 @@ namespace winrt::Winvert4::implementation
         bool m_isProgrammaticColorPickerChange{ false };
         bool m_isUpdatingColorMapUI{ false };
         bool m_isUpdatingSimpleUI{ false };
+
+        // --- Sampling overlay (magnifier) ---
+        static LRESULT CALLBACK SampleOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+        void ShowSampleOverlay();
+        void MoveSampleOverlay(POINT ptScreen);
+        void HideSampleOverlay();
+        HWND m_sampleOverlayHwnd{ nullptr };
+        int  m_sampleOverlaySize{ 160 };  // pixels diameter
+        int  m_sampleOverlayZoom{ 4 };    // scale factor
     };
 }
 

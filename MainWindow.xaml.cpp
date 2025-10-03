@@ -49,6 +49,7 @@ LRESULT CALLBACK winrt::Winvert4::implementation::MainWindow::LowLevelMouseProc(
             dq.TryEnqueue([self, pt]() {
                 self->OnColorSampled(pt);
                 if (auto btn = self->ColorMapSampleButton()) { btn.Content(box_value(L"Sample")); btn.IsEnabled(true); }
+                self->HideSampleOverlay();
             });
         }
         if (MainWindow::s_mouseHook)
@@ -59,6 +60,17 @@ LRESULT CALLBACK winrt::Winvert4::implementation::MainWindow::LowLevelMouseProc(
         }
         // Swallow this click so desktop does not receive it
         return 1;
+    }
+    else if (nCode >= 0 && wParam == WM_MOUSEMOVE)
+    {
+        auto p = reinterpret_cast<MSLLHOOKSTRUCT*>(lParam);
+        auto self = MainWindow::s_samplingInstance;
+        if (self && self->m_isSamplingColor)
+        {
+            POINT pt = p->pt;
+            auto dq = self->DispatcherQueue();
+            dq.TryEnqueue([self, pt]() { self->MoveSampleOverlay(pt); });
+        }
     }
     return CallNextHookEx(MainWindow::s_mouseHook, nCode, wParam, lParam);
 }
@@ -1483,6 +1495,9 @@ namespace winrt::Winvert4::implementation
         // Install a low-level mouse hook to capture the next click and swallow it
         s_samplingInstance = this;
         s_mouseHook = SetWindowsHookExW(WH_MOUSE_LL, &MainWindow::LowLevelMouseProc, GetModuleHandleW(nullptr), 0);
+        // Show overlay following the cursor
+        ShowSampleOverlay();
+        POINT pt{}; GetCursorPos(&pt); MoveSampleOverlay(pt);
     }
 
     void winrt::Winvert4::implementation::MainWindow::OnColorSampled(POINT ptScreen)
@@ -1526,6 +1541,92 @@ namespace winrt::Winvert4::implementation
         }
         m_isSamplingColor = false;
         if (auto btn = ColorMapSampleButton()) { btn.Content(box_value(L"Sample")); btn.IsEnabled(true); }
+        HideSampleOverlay();
+    }
+
+    // --- Sampling overlay (magnifier) implementation ---
+    LRESULT CALLBACK winrt::Winvert4::implementation::MainWindow::SampleOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+    {
+        if (msg == WM_NCHITTEST) return HTTRANSPARENT; // click-through
+        if (msg == WM_ERASEBKGND) return 1;
+        return DefWindowProcW(hwnd, msg, wParam, lParam);
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::ShowSampleOverlay()
+    {
+        if (m_sampleOverlayHwnd) return;
+        WNDCLASSW wc{}; wc.style = CS_HREDRAW | CS_VREDRAW;
+        wc.lpfnWndProc = &MainWindow::SampleOverlayWndProc;
+        wc.hInstance = GetModuleHandleW(nullptr);
+        wc.lpszClassName = L"Winvert4_SampleOverlay";
+        static ATOM atom = 0; if (!atom) atom = RegisterClassW(&wc);
+        int sz = m_sampleOverlaySize;
+        m_sampleOverlayHwnd = CreateWindowExW(
+            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
+            wc.lpszClassName, L"", WS_POPUP,
+            0, 0, sz, sz, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+        if (m_sampleOverlayHwnd)
+        {
+            HRGN rgn = CreateEllipticRgn(0, 0, sz, sz);
+            SetWindowRgn(m_sampleOverlayHwnd, rgn, FALSE);
+            ShowWindow(m_sampleOverlayHwnd, SW_SHOWNOACTIVATE);
+        }
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::MoveSampleOverlay(POINT ptScreen)
+    {
+        if (!m_sampleOverlayHwnd) return;
+        int sz = m_sampleOverlaySize;
+        // Center window at cursor with small offset so cursor is near center
+        int x = ptScreen.x - sz / 2;
+        int y = ptScreen.y - sz / 2;
+        SetWindowPos(m_sampleOverlayHwnd, HWND_TOPMOST, x, y, sz, sz, SWP_NOACTIVATE | SWP_NOSIZE | SWP_SHOWWINDOW);
+
+        // Draw magnified content captured from the screen beneath (avoid capturing our own overlay)
+        HDC scrDC = GetDC(nullptr);
+        int zoom = (m_sampleOverlayZoom > 0) ? m_sampleOverlayZoom : 4;
+        int srcW = sz / zoom; int srcH = sz / zoom;
+        int sx = ptScreen.x - srcW / 2; int sy = ptScreen.y - srcH / 2;
+
+        // Create memory surface and capture screen region (with CAPTUREBLT)
+        HDC memDC = CreateCompatibleDC(scrDC);
+        HBITMAP memBmp = CreateCompatibleBitmap(scrDC, srcW, srcH);
+        HGDIOBJ oldBmp = SelectObject(memDC, memBmp);
+        // Temporarily hide overlay to prevent self-capture
+        ShowWindow(m_sampleOverlayHwnd, SW_HIDE);
+        BitBlt(memDC, 0, 0, srcW, srcH, scrDC, sx, sy, SRCCOPY | 0x40000000 /*CAPTUREBLT*/);
+        ShowWindow(m_sampleOverlayHwnd, SW_SHOWNOACTIVATE);
+
+        // Paint into the overlay
+        HDC wndDC = GetDC(m_sampleOverlayHwnd);
+        SetStretchBltMode(wndDC, HALFTONE);
+        // Clear background
+        HBRUSH hbr = CreateSolidBrush(RGB(0,0,0)); RECT rc{0,0,sz,sz}; FillRect(wndDC, &rc, hbr); DeleteObject(hbr);
+        StretchBlt(wndDC, 0, 0, sz, sz, memDC, 0, 0, srcW, srcH, SRCCOPY);
+
+        // Determine border color from the pixel under cursor
+        COLORREF cr = GetPixel(scrDC, ptScreen.x, ptScreen.y);
+        HPEN pen = CreatePen(PS_SOLID, 2, cr == CLR_INVALID ? RGB(255,255,255) : cr);
+        HPEN oldPen = (HPEN)SelectObject(wndDC, pen);
+        HBRUSH nullb = (HBRUSH)GetStockObject(HOLLOW_BRUSH); HBRUSH oldb = (HBRUSH)SelectObject(wndDC, nullb);
+        Ellipse(wndDC, 1, 1, sz-1, sz-1);
+        SelectObject(wndDC, oldPen); SelectObject(wndDC, oldb); DeleteObject(pen);
+
+        // Cleanup
+        SelectObject(memDC, oldBmp);
+        DeleteObject(memBmp);
+        DeleteDC(memDC);
+        ReleaseDC(m_sampleOverlayHwnd, wndDC);
+        ReleaseDC(nullptr, scrDC);
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::HideSampleOverlay()
+    {
+        if (m_sampleOverlayHwnd)
+        {
+            DestroyWindow(m_sampleOverlayHwnd);
+            m_sampleOverlayHwnd = nullptr;
+        }
     }
 
     HWND MainWindow::SelectedWindowHwnd()
