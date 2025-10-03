@@ -110,7 +110,7 @@ namespace winrt::Winvert4::implementation
         {
             auto add = [&](const wchar_t* name, const float m[16], const float off[4])
             {
-                SavedFilter sf{}; sf.name = name;
+                SavedFilter sf{}; sf.name = name; sf.isBuiltin = true;
                 memcpy(sf.mat, m, sizeof(sf.mat));
                 memcpy(sf.offset, off, sizeof(sf.offset));
                 m_savedFilters.push_back(sf);
@@ -572,17 +572,8 @@ namespace winrt::Winvert4::implementation
                 }
                 else
                 {
-                    // Commit on Enter and on focus loss; Enter also clears focus
-                    tb.KeyDown([this](auto const& sender, winrt::Microsoft::UI::Xaml::Input::KeyRoutedEventArgs const& e)
-                    {
-                        using winrt::Windows::System::VirtualKey;
-                        if (e.Key() == VirtualKey::Enter)
-                        {
-                            CommitMatrixTextBoxes_();
-                            e.Handled(true);
-                            if (auto root = this->Content().try_as<FrameworkElement>()) { root.Focus(winrt::Microsoft::UI::Xaml::FocusState::Programmatic); }
-                        }
-                    });
+                    // Commit on Enter via shared handler; also commit on focus loss
+                    tb.KeyDown({ this, &MainWindow::EnterKeyCommit_Unfocus });
                     tb.LostFocus([this](auto const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
                     {
                         CommitMatrixTextBoxes_();
@@ -610,6 +601,25 @@ namespace winrt::Winvert4::implementation
                 UpdateSettingsForGroup(idx);
             }
         }
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::EnterKeyCommit_Unfocus(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::Input::KeyRoutedEventArgs const& e)
+    {
+        using winrt::Windows::System::VirtualKey;
+        if (e.Key() != VirtualKey::Enter) return;
+        if (auto cb = sender.try_as<Controls::ComboBox>())
+        {
+            cb.IsDropDownOpen(false);
+        }
+        if (sender.try_as<Controls::TextBox>())
+        {
+            CommitMatrixTextBoxes_();
+        }
+        if (auto root = this->Content().try_as<FrameworkElement>())
+        {
+            root.Focus(FocusState::Programmatic);
+        }
+        e.Handled(true);
     }
 
     void winrt::Winvert4::implementation::MainWindow::ReadMatrixFromGrid(float (&outMat)[16], float (&outOff)[4])
@@ -1758,22 +1768,34 @@ void winrt::Winvert4::implementation::MainWindow::SaveFilterButton_Click(winrt::
     }
 
     // Save or update saved filter (no auto-apply)
-    std::wstring name = L"Untitled";
-    if (auto combo = SavedFiltersComboBox())
+    std::wstring name;
+    int selIndex = -1;
+    if (auto combo = SavedFiltersComboBox()) selIndex = combo.SelectedIndex();
+    if (selIndex >= 0 && selIndex < static_cast<int>(m_savedFilters.size()))
     {
-        // Prefer selected item text (ComboBox may not be editable in WinUI 3)
-        if (combo.SelectedIndex() >= 0)
+        name = m_savedFilters[selIndex].name;
+    }
+    // If built-in (or no selection), generate a new unique name so we don't overwrite defaults
+    bool selectedIsBuiltin = (selIndex >= 0 && m_savedFilters[selIndex].isBuiltin);
+    if (name.empty() || selectedIsBuiltin)
+    {
+        std::wstring base = L"Custom ";
+        int n = 1;
+        while (true)
         {
-            auto hs = unbox_value<winrt::hstring>(combo.SelectedItem());
-            name = std::wstring(hs);
+            std::wstring candidate = base + std::to_wstring(n);
+            bool exists = false;
+            for (auto& f : m_savedFilters) { if (f.name == candidate) { exists = true; break; } }
+            if (!exists) { name = candidate; break; }
+            ++n;
         }
     }
 
     int existing = -1;
     for (int i = 0; i < static_cast<int>(m_savedFilters.size()); ++i)
-        if (m_savedFilters[i].name == name) { existing = i; break; }
+        if (m_savedFilters[i].name == name && !m_savedFilters[i].isBuiltin) { existing = i; break; }
 
-    SavedFilter sf{}; sf.name = name;
+    SavedFilter sf{}; sf.name = name; sf.isBuiltin = false;
     memcpy(sf.mat, mat4, sizeof(mat4));
     memcpy(sf.offset, offset, sizeof(offset));
 
@@ -1786,6 +1808,11 @@ void winrt::Winvert4::implementation::MainWindow::SaveFilterButton_Click(winrt::
     {
         for (int i = 0; i < static_cast<int>(m_savedFilters.size()); ++i)
             if (m_savedFilters[i].name == name) { combo.SelectedIndex(i); break; }
+    }
+    // Toggle buttons: hide Save, show Apply; enable Delete for custom filters
+    if (auto root = this->Content().try_as<FrameworkElement>())
+    {
+        if (auto btn = root.FindName(L"DeleteFilterButton").try_as<Controls::Button>()) btn.IsEnabled(true);
     }
 }
 
@@ -1802,9 +1829,15 @@ void winrt::Winvert4::implementation::MainWindow::DeleteFilterButton_Click(winrt
         }
     }
     if (name.empty()) return;
-    m_savedFilters.erase(std::remove_if(m_savedFilters.begin(), m_savedFilters.end(), [&](const SavedFilter& f){return f.name==name;}), m_savedFilters.end());
+    // Do not delete built-in filters
+    m_savedFilters.erase(std::remove_if(m_savedFilters.begin(), m_savedFilters.end(), [&](const SavedFilter& f){return f.name==name && !f.isBuiltin;}), m_savedFilters.end());
     UpdateSavedFiltersCombo();
     UpdateFilterDropdown();
+    // After delete, disable the delete button
+    if (auto root = this->Content().try_as<FrameworkElement>())
+    {
+        if (auto btn = root.FindName(L"DeleteFilterButton").try_as<Controls::Button>()) btn.IsEnabled(false);
+    }
 }
 
 void winrt::Winvert4::implementation::MainWindow::ClearFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -1846,6 +1879,11 @@ void winrt::Winvert4::implementation::MainWindow::SavedFiltersComboBox_Selection
     if (sel < 0 || sel >= static_cast<int>(m_savedFilters.size())) return;
 
     auto& sf = m_savedFilters[sel];
+    // Toggle Delete enablement based on built-in status
+    if (auto root = this->Content().try_as<FrameworkElement>())
+    {
+        if (auto btn = root.FindName(L"DeleteFilterButton").try_as<Controls::Button>()) btn.IsEnabled(!sf.isBuiltin);
+    }
     auto grid = FilterMatrixGrid();
     if (!grid) return;
     EnsureFilterMatrixGridInitialized();
@@ -1864,7 +1902,7 @@ void winrt::Winvert4::implementation::MainWindow::SavedFiltersComboBox_Selection
         int c = Microsoft::UI::Xaml::Controls::Grid::GetColumn(tb);
         double v = 0.0;
         if (r < 4 && c < 4) v = sf.mat[r * 4 + c];
-        else if (r < 4 && c == 4) v = sf.offset[r];
+        else if (r == 4 && c < 4) v = sf.offset[c];
         else if (r == 4 && c == 4) v = 1.0; // const row
         wchar_t buf[32]; swprintf_s(buf, L"%.3f", v);
         tb.Text(buf);
@@ -2126,54 +2164,6 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
     SetHiddenForGroup(idx, true);
 }
 
-void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
-{
-    // Read current grid and permanently apply to selected window
-    auto grid = FilterMatrixGrid();
-    if (!grid) return;
-
-    float mat4[16] = { 0 };
-    float offset[4] = { 0 };
-    for (int i = 0; i < 4; ++i) mat4[i * 4 + i] = 1.0f;
-    for (auto child : grid.Children())
-    {
-        auto tb = child.try_as<TextBox>();
-        if (!tb) continue;
-        int r = Microsoft::UI::Xaml::Controls::Grid::GetRow(tb);
-        int c = Microsoft::UI::Xaml::Controls::Grid::GetColumn(tb);
-        try {
-            float v = std::stof(std::wstring(tb.Text()));
-            if (r >= 0 && r < 4 && c >= 0 && c < 4) mat4[r * 4 + c] = v;
-            else if (r == 4 && c >= 0 && c < 4) offset[c] = v;
-        } catch (...) {}
-    }
-
-    int idx = SelectedTabIndex();
-    if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
-    // Apply only if the new values differ from current settings
-    auto equalWithEps = [](const float* a, const float* b, size_t n, float eps)
-    {
-        for (size_t i = 0; i < n; ++i) { if (fabs(a[i] - b[i]) > eps) return false; }
-        return true;
-    };
-    bool sameMat = equalWithEps(mat4, m_windowSettings[idx].colorMat, 16, 1e-6f);
-    bool sameOff = equalWithEps(offset, m_windowSettings[idx].colorOffset, 4, 1e-6f);
-    if (!sameMat || !sameOff || !m_windowSettings[idx].isCustomEffectActive)
-    {
-        m_windowSettings[idx].isCustomEffectActive = true;
-        memcpy(m_windowSettings[idx].colorMat, mat4, sizeof(mat4));
-        memcpy(m_windowSettings[idx].colorOffset, offset, sizeof(offset));
-        UpdateSettingsForGroup(idx);
-    }
-
-    if (idx < static_cast<int>(m_hasPreviewBackup.size()) && m_hasPreviewBackup[idx])
-    {
-        m_hasPreviewBackup[idx] = false;
-        bool anyPreview = false;
-        for (bool b : m_hasPreviewBackup) { if (b) { anyPreview = true; break; } }
-        m_isPreviewActive = anyPreview;
-    }
-}
 
     void winrt::Winvert4::implementation::MainWindow::LumaWeight_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&)
 {
@@ -2536,3 +2526,5 @@ int winrt::Winvert4::implementation::MainWindow::FavoriteFilterIndex() const
 {
     return m_favoriteFilterIndex;
 }
+
+
