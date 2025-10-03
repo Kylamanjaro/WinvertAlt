@@ -3,6 +3,8 @@
 #include "Log.h"
 #include "OutputManager.h"
 #include <winrt/Microsoft.UI.Windowing.h>
+#include <winrt/Microsoft.UI.Xaml.Input.h>
+#include <winrt/Windows.System.h>
 #include <gdiplus.h>
 #include <microsoft.ui.xaml.window.h>
 
@@ -398,8 +400,38 @@ namespace winrt::Winvert4::implementation
         // Adjust About panel visibility/width based on maximize state
         UpdateSettingsColumnsForWindowState();
 
-        // Default all settings sections to collapsed on entry
+        // Default all settings sections (keep Custom Filters open) and reset sliders to neutral
         CollapseAllSettingsExpanders();
+        // Reset simple sliders to neutral state on entry
+        m_isUpdatingSimpleUI = true;
+        m_simpleBrightness = 0.0f;
+        m_simpleContrast   = 1.0f;
+        m_simpleSaturation = 1.0f;
+        m_simpleTemperature = 0.0f;
+        m_simpleTint = 0.0f;
+        if (auto s = BrightnessSlider()) s.Value(m_simpleBrightness);
+        if (auto s = ContrastSlider())   s.Value(m_simpleContrast);
+        if (auto s = SaturationSlider()) s.Value(m_simpleSaturation);
+        if (auto s = TemperatureSlider()) s.Value(m_simpleTemperature);
+        if (auto s = TintSlider())        s.Value(m_simpleTint);
+        m_isUpdatingSimpleUI = false;
+        // Compose and display the neutral matrix in the grid; if preview is active, push it
+        {
+            float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
+            if (m_isPreviewActive)
+            {
+                int idx = SelectedTabIndex();
+                if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
+                {
+                    if (static_cast<int>(m_hasPreviewBackup.size()) <= idx) { m_hasPreviewBackup.resize(idx + 1, false); m_previewBackup.resize(idx + 1); }
+                    if (!m_hasPreviewBackup[idx]) { m_previewBackup[idx] = m_windowSettings[idx]; m_hasPreviewBackup[idx] = true; }
+                    m_windowSettings[idx].isCustomEffectActive = true;
+                    memcpy(m_windowSettings[idx].colorMat, m, sizeof(m));
+                    memcpy(m_windowSettings[idx].colorOffset, off, sizeof(off));
+                    UpdateSettingsForGroup(idx);
+                }
+            }
+        }
         RefreshColorMapList();
     }
 
@@ -583,7 +615,44 @@ namespace winrt::Winvert4::implementation
                     wchar_t buf[32]; swprintf_s(buf, L"%.3f", v);
                     tb.Text(buf);
                 }
+                else
+                {
+                    // Commit on Enter and on focus loss; Enter also clears focus
+                    tb.KeyDown([this](auto const& sender, winrt::Microsoft::UI::Xaml::Input::KeyRoutedEventArgs const& e)
+                    {
+                        using winrt::Windows::System::VirtualKey;
+                        if (e.Key() == VirtualKey::Enter)
+                        {
+                            CommitMatrixTextBoxes_();
+                            e.Handled(true);
+                            if (auto root = this->Content().try_as<FrameworkElement>()) { root.Focus(winrt::Microsoft::UI::Xaml::FocusState::Programmatic); }
+                        }
+                    });
+                    tb.LostFocus([this](auto const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+                    {
+                        CommitMatrixTextBoxes_();
+                    });
+                }
                 grid.Children().Append(tb);
+            }
+        }
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::CommitMatrixTextBoxes_()
+    {
+        float m[16], off[4]; ReadMatrixFromGrid(m, off);
+        // If preview is active, push live update
+        if (m_isPreviewActive)
+        {
+            int idx = SelectedTabIndex();
+            if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
+            {
+                if (static_cast<int>(m_hasPreviewBackup.size()) <= idx) { m_hasPreviewBackup.resize(idx + 1, false); m_previewBackup.resize(idx + 1); }
+                if (!m_hasPreviewBackup[idx]) { m_previewBackup[idx] = m_windowSettings[idx]; m_hasPreviewBackup[idx] = true; }
+                m_windowSettings[idx].isCustomEffectActive = true;
+                memcpy(m_windowSettings[idx].colorMat, m, sizeof(m));
+                memcpy(m_windowSettings[idx].colorOffset, off, sizeof(off));
+                UpdateSettingsForGroup(idx);
             }
         }
     }

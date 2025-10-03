@@ -194,6 +194,7 @@ namespace winrt::Winvert4::implementation
         void EnsureFilterMatrixGridInitialized();
         void ReadMatrixFromGrid(float (&outMat)[16], float (&outOff)[4]);
         void UpdateSlidersFromMatrix(const float (&mat)[16], const float (&off)[4]);
+        void CommitMatrixTextBoxes_();
 
         // --- UI Helpers ---
         void UpdateUIState();
