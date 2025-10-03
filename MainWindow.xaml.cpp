@@ -236,6 +236,15 @@ namespace winrt::Winvert4::implementation
         LumaRNumberBox().Value(m_lumaWeights[0]);
         LumaGNumberBox().Value(m_lumaWeights[1]);
         LumaBNumberBox().Value(m_lumaWeights[2]);
+        // Initialize brightness protection delay UI
+        {
+            auto root = this->Content().try_as<FrameworkElement>();
+            if (root)
+            {
+                auto nb = root.FindName(L"BrightnessDelayNumberBox").try_as<Controls::NumberBox>();
+                if (nb) nb.Value(m_brightnessDelayFrames);
+            }
+        }
 
         m_isAppInitialized = true;
 
@@ -888,6 +897,7 @@ namespace winrt::Winvert4::implementation
             }
         }
         settings.showFpsOverlay = m_showFpsOverlay;
+        settings.brightnessProtectionDelayFrames = m_brightnessDelayFrames;
         memcpy(settings.lumaWeights, m_lumaWeights, sizeof(settings.lumaWeights));
         m_windowSettings.push_back(settings);
         m_pendingEffect = PendingEffect::None; // Reset for next time
@@ -1642,7 +1652,6 @@ void winrt::Winvert4::implementation::MainWindow::SavedFiltersComboBox_Selection
     int sel = combo.SelectedIndex();
     if (sel < 0 || sel >= static_cast<int>(m_savedFilters.size())) return;
 
-    m_favoriteFilterIndex = sel;
     auto& sf = m_savedFilters[sel];
     auto grid = FilterMatrixGrid();
     if (!grid) return;
@@ -1792,12 +1801,42 @@ void winrt::Winvert4::implementation::MainWindow::ApplyCompositeCustomFiltersFor
 void winrt::Winvert4::implementation::MainWindow::UpdateSavedFiltersCombo()
 {
     auto combo = SavedFiltersComboBox();
-    if (!combo) return;
-    combo.Items().Clear();
-    for (auto& sf : m_savedFilters)
+    Controls::ComboBox favCombo{ nullptr };
     {
-        combo.Items().Append(box_value(sf.name));
+        auto root = this->Content().try_as<FrameworkElement>();
+        if (root) favCombo = root.FindName(L"FavoriteFilterComboBox").try_as<Controls::ComboBox>();
     }
+    if (combo)
+    {
+        combo.Items().Clear();
+        for (auto& sf : m_savedFilters)
+        {
+            combo.Items().Append(box_value(sf.name));
+        }
+    }
+    if (favCombo)
+    {
+        favCombo.Items().Clear();
+        for (auto& sf : m_savedFilters)
+        {
+            favCombo.Items().Append(box_value(sf.name));
+        }
+        // Clamp favorite index and apply selection
+        if (m_favoriteFilterIndex < 0 || m_favoriteFilterIndex >= static_cast<int>(m_savedFilters.size()))
+        {
+            m_favoriteFilterIndex = m_savedFilters.empty() ? -1 : 0;
+        }
+        favCombo.SelectedIndex(m_favoriteFilterIndex);
+    }
+}
+
+void winrt::Winvert4::implementation::MainWindow::FavoriteFilterComboBox_SelectionChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&)
+{
+    auto favCombo = sender.try_as<Controls::ComboBox>();
+    if (!favCombo) return;
+    int sel = favCombo.SelectedIndex();
+    if (sel < 0 || sel >= static_cast<int>(m_savedFilters.size())) return;
+    m_favoriteFilterIndex = sel;
 }
 
 void winrt::Winvert4::implementation::MainWindow::PreviewFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -1884,7 +1923,7 @@ void winrt::Winvert4::implementation::MainWindow::ApplyFilterButton_Click(winrt:
     }
 }
 
-void winrt::Winvert4::implementation::MainWindow::LumaWeight_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&)
+    void winrt::Winvert4::implementation::MainWindow::LumaWeight_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&)
 {
     // Defer handling until after the window is fully initialized to avoid race conditions.
     if (!m_isAppInitialized) return;
@@ -1900,6 +1939,30 @@ void winrt::Winvert4::implementation::MainWindow::LumaWeight_ValueChanged(winrt:
         UpdateSettingsForGroup(static_cast<int>(i));
     }
 }
+
+    void winrt::Winvert4::implementation::MainWindow::BrightnessDelay_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&)
+    {
+        if (!m_isAppInitialized) return;
+        // Read the current value from the UI safely via FindName
+        int newDelay = 0;
+        {
+            auto root = this->Content().try_as<FrameworkElement>();
+            if (root)
+            {
+                auto nb = root.FindName(L"BrightnessDelayNumberBox").try_as<Controls::NumberBox>();
+                if (nb) newDelay = static_cast<int>(nb.Value());
+            }
+        }
+        if (newDelay < 0) newDelay = 0;
+        if (newDelay == m_brightnessDelayFrames) return;
+        m_brightnessDelayFrames = newDelay;
+        // Apply to all windows immediately
+        for (size_t i = 0; i < m_windowSettings.size(); ++i)
+        {
+            m_windowSettings[i].brightnessProtectionDelayFrames = m_brightnessDelayFrames;
+            UpdateSettingsForGroup(static_cast<int>(i));
+        }
+    }
 
 
 

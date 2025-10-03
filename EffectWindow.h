@@ -60,15 +60,15 @@ private:
     static constexpr uint32_t kMaxColorMaps = 64;
     struct PixelCB {
         uint32_t enableInvert;
-        uint32_t enableGrayscale;
         uint32_t enableMatrix;
         uint32_t enableColorMap;
+        float _pad1; // Padding to align enables to 16 bytes
         float lumaWeights[3];
-        float _pad1; // Padding to align colorMat to 16 bytes
+        float _pad2; // Padding to align colorMat to 16 bytes
         float colorMat[16];
         float colorOffset[4];
         uint32_t colorMapCount;
-        float _pad2[3]; // Padding to align colorMapSrc to 16 bytes
+        float _pad3[3]; // Padding to align colorMapSrc to 16 bytes
         // Pack src RGB in xyz and tolerance^2 in w
         float colorMapSrc[kMaxColorMaps][4];
         // Pack dst RGB in xyz; w unused
@@ -122,4 +122,6 @@ private:
     UINT m_mipLastLevel{ 0 };
     float m_avgLuma{ 0.0f };
     bool  m_effectiveInvert{ false };
+    int   m_brightProtPendingCount{ 0 };
+    bool  m_brightProtPendingState{ false };
 };

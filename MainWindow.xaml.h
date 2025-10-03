@@ -32,11 +32,13 @@ namespace winrt::Winvert4::implementation
         void UpdateSettingsColumnsForWindowState();
         void CustomFiltersExpander_Collapsed(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::ExpanderCollapsedEventArgs const&);
         void LumaWeight_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
+        void BrightnessDelay_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
         void ShowFpsToggle_Toggled(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void RebindInvertHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void RebindFilterHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void RebindRemoveHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void SelectionColorPicker_ColorChanged(winrt::Microsoft::UI::Xaml::Controls::ColorPicker const&, winrt::Microsoft::UI::Xaml::Controls::ColorChangedEventArgs const&);
+        void FavoriteFilterComboBox_SelectionChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
         // Color Mapping
         void ColorMappingToggle_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void ColorMapAddButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
@@ -134,6 +136,7 @@ namespace winrt::Winvert4::implementation
         bool m_showFpsOverlay{ false };
         COLORREF m_selectionColor{ RGB(255, 0, 0) };
         bool m_controlPanelShownYet{ false };
+        int  m_brightnessDelayFrames{ 0 }; // default 0 frames
 
         // --- Hotkeys ---
         enum class RebindingState { None, Invert, Filter, Remove };

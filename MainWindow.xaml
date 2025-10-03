@@ -91,6 +91,19 @@
                 <!-- Left column: cards -->
                 <ScrollViewer Grid.Column="0">
                     <StackPanel Spacing="12" Padding="15">
+
+                        <!-- Appearance / Border Color Card -->
+                        <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
+                            <Expander x:Name="SelectionColorExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                                <Expander.Header>
+                                    <TextBlock Text="Selection border color" FontWeight="SemiBold"/>
+                                </Expander.Header>
+                                <StackPanel Spacing="8" Padding="8,4,0,8" HorizontalAlignment="Left">
+                                    <ColorPicker x:Name="SelectionColorPicker" ColorSpectrumShape="Ring" IsAlphaEnabled="False" ColorChanged="SelectionColorPicker_ColorChanged"/>
+                                </StackPanel>
+                            </Expander>
+                        </Border>
+
                         <!-- Brightness Protection Card -->
                         <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
                             <Expander x:Name="BrightnessExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
@@ -108,24 +121,14 @@
                                     </Grid>
                                 </Expander.Header>
                                 <StackPanel Spacing="8" Padding="8,4,0,8" HorizontalAlignment="Left">
+                                    <TextBlock Text="Trigger delay (frames)" Margin="0,0,0,4"/>
+                                    <NumberBox x:Name="BrightnessDelayNumberBox" Minimum="0" Maximum="1000" SmallChange="1" LargeChange="5" SpinButtonPlacementMode="Compact" ValueChanged="BrightnessDelay_ValueChanged"/>
                                     <TextBlock Text="Luminance Weights" Margin="0,12,0,0"/>
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <NumberBox x:Name="LumaRNumberBox" Header="R" Minimum="0" Maximum="1" SmallChange="0.01" LargeChange="0.1" SpinButtonPlacementMode="Compact" ValueChanged="LumaWeight_ValueChanged"/>
                                         <NumberBox x:Name="LumaGNumberBox" Header="G" Minimum="0" Maximum="1" SmallChange="0.01" LargeChange="0.1" SpinButtonPlacementMode="Compact" ValueChanged="LumaWeight_ValueChanged"/>
                                         <NumberBox x:Name="LumaBNumberBox" Header="B" Minimum="0" Maximum="1" SmallChange="0.01" LargeChange="0.1" SpinButtonPlacementMode="Compact" ValueChanged="LumaWeight_ValueChanged"/>
                                     </StackPanel>
-                                </StackPanel>
-                            </Expander>
-                        </Border>
-
-                        <!-- Appearance / Border Color Card -->
-                        <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
-                            <Expander x:Name="SelectionColorExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                                <Expander.Header>
-                                    <TextBlock Text="Selection border color" FontWeight="SemiBold"/>
-                                </Expander.Header>
-                                <StackPanel Spacing="8" Padding="8,4,0,8" HorizontalAlignment="Left">
-                                    <ColorPicker x:Name="SelectionColorPicker" ColorSpectrumShape="Ring" IsAlphaEnabled="False" ColorChanged="SelectionColorPicker_ColorChanged"/>
                                 </StackPanel>
                             </Expander>
                         </Border>
@@ -171,66 +174,6 @@
                             </Expander>
                         </Border>
 
-                        <!-- Color Mapping Card -->
-                        <Border Background="{ThemeResource LayerFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1" CornerRadius="8" Padding="12">
-                            <Expander x:Name="ColorMappingExpander"
-                                      HorizontalAlignment="Stretch"
-                                      HorizontalContentAlignment="Stretch">
-                                <Expander.Header>
-                                    <TextBlock Text="Color mapping" FontWeight="SemiBold"/>
-                                </Expander.Header>
-                                <Grid ColumnSpacing="16" Padding="8,4,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="300"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <!-- Left: mapping list -->
-                                    <StackPanel Grid.Column="0" Spacing="8">
-                                        <Grid ColumnSpacing="8">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Text="Define color replacements"/>
-                                            <Button Grid.Column="1" x:Name="ColorMapAddButton" Content="Add" Click="ColorMapAddButton_Click"/>
-                                        </Grid>
-
-                                        <Grid ColumnSpacing="8" Margin="0,4,0,0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="40"/>
-                                                <ColumnDefinition Width="60"/>
-                                                <ColumnDefinition Width="24"/>
-                                                <ColumnDefinition Width="60"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Text="On" HorizontalAlignment="Center" Opacity="0.7"/>
-                                            <TextBlock Grid.Column="1" Text="From" HorizontalAlignment="Center" Opacity="0.7"/>
-                                            <TextBlock Grid.Column="2" Text="→" HorizontalAlignment="Center" Opacity="0.7"/>
-                                            <TextBlock Grid.Column="3" Text="To" HorizontalAlignment="Center" Opacity="0.7"/>
-                                            <TextBlock Grid.Column="4" Text="Tolerance" Opacity="0.7"/>
-                                            <TextBlock Grid.Column="5" Text=""/>
-                                        </Grid>
-
-                                        <StackPanel x:Name="ColorMapListPanel" Spacing="6"/>
-                                    </StackPanel>
-
-                                    <!-- Right: shared color picker for swatches -->
-                                    <StackPanel Grid.Column="1" Spacing="8">
-                                        <TextBlock Text="Color picker"/>
-                                        <ColorPicker x:Name="ColorMapPicker" ColorSpectrumShape="Ring" IsAlphaEnabled="False" ColorChanged="ColorMapPicker_ColorChanged"/>
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <Button x:Name="PreviewColorMapButton" Content="Preview" Click="PreviewColorMapButton_Click"/>
-                                            <Button x:Name="ColorMapSampleButton" Content="Sample" Click="ColorMapSampleButton_Click"/>
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Grid>
-                            </Expander>
-                        </Border>
-
                         <!-- Custom Filters editor as Expander -->
                         <Border Background="{ThemeResource LayerFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -243,6 +186,12 @@
                                     <TextBlock Text="Custom filters" FontWeight="SemiBold"/>
                                 </Expander.Header>
                                 <StackPanel Spacing="8">
+                                    <!-- Favorite effect selection for Win+Shift+F -->
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Favorite effect (Win+Shift+F)"/>
+                                        <ComboBox x:Name="FavoriteFilterComboBox" SelectionChanged="FavoriteFilterComboBox_SelectionChanged"/>
+                                    </StackPanel>
+
                                     <Grid ColumnSpacing="8">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
@@ -326,6 +275,66 @@
                                         </StackPanel>
                                     </StackPanel>
                                 </StackPanel>
+                            </Expander>
+                        </Border>
+
+                        <!-- Color Mapping Card -->
+                        <Border Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="12">
+                            <Expander x:Name="ColorMappingExpander"
+                                      HorizontalAlignment="Stretch"
+                                      HorizontalContentAlignment="Stretch">
+                                <Expander.Header>
+                                    <TextBlock Text="Color mapping" FontWeight="SemiBold"/>
+                                </Expander.Header>
+                                <Grid ColumnSpacing="16" Padding="8,4,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="300"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Left: mapping list -->
+                                    <StackPanel Grid.Column="0" Spacing="8">
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="Define color replacements"/>
+                                            <Button Grid.Column="1" x:Name="ColorMapAddButton" Content="Add" Click="ColorMapAddButton_Click"/>
+                                        </Grid>
+
+                                        <Grid ColumnSpacing="8" Margin="0,4,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="40"/>
+                                                <ColumnDefinition Width="60"/>
+                                                <ColumnDefinition Width="24"/>
+                                                <ColumnDefinition Width="60"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="On" HorizontalAlignment="Center" Opacity="0.7"/>
+                                            <TextBlock Grid.Column="1" Text="From" HorizontalAlignment="Center" Opacity="0.7"/>
+                                            <TextBlock Grid.Column="2" Text="→" HorizontalAlignment="Center" Opacity="0.7"/>
+                                            <TextBlock Grid.Column="3" Text="To" HorizontalAlignment="Center" Opacity="0.7"/>
+                                            <TextBlock Grid.Column="4" Text="Tolerance" Opacity="0.7"/>
+                                            <TextBlock Grid.Column="5" Text=""/>
+                                        </Grid>
+
+                                        <StackPanel x:Name="ColorMapListPanel" Spacing="6"/>
+                                    </StackPanel>
+
+                                    <!-- Right: shared color picker for swatches -->
+                                    <StackPanel Grid.Column="1" Spacing="8">
+                                        <TextBlock Text="Color picker"/>
+                                        <ColorPicker x:Name="ColorMapPicker" ColorSpectrumShape="Ring" IsAlphaEnabled="False" ColorChanged="ColorMapPicker_ColorChanged"/>
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button x:Name="PreviewColorMapButton" Content="Preview" Click="PreviewColorMapButton_Click"/>
+                                            <Button x:Name="ColorMapSampleButton" Content="Sample" Click="ColorMapSampleButton_Click"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Grid>
                             </Expander>
                         </Border>
                     </StackPanel>

@@ -60,9 +60,9 @@ By adopting **Desktop Duplication** and **GPU shaders**:
       - Settings button to navigate to fullscreen settings page on tab structure
       - Invert toggle
       - Brightness Protection
-      - Grayscale toggle
       - Filter flyout
       - Hide toggle
+      - Color Mapping toggle
 
 - **Settings Page**
   - Full screen page that hides all window on navigation
@@ -86,54 +86,5 @@ By adopting **Desktop Duplication** and **GPU shaders**:
 ---
 
 ## Next Steps (template)
-Output manager
+Fix the filter button. On the hotkey "win+shift+f" the favorite filter should be applied to the selected region of the screen.
 
-Enumerate IDXGIAdapter → IDXGIOutputs at startup.
-
-Create a worker thread per output (don’t start duplication yet).
-
-Track hot-plug/rotation with DXGI notifications; add/remove workers as outputs appear/disappear.
-
-Lazy duplication
-
-Each worker owns:
-
-A D3D11 device on the same adapter as its output (or build it lazily).
-
-An IDXGIOutputDuplication created only when subscriber count > 0.
-
-When the last subscriber leaves, release the duplication (free GPU resources) but keep the thread sleeping.
-
-Subscriptions (windows/regions)
-
-Windows register regions in virtual desktop coordinates.
-
-The manager splits requests across outputs by intersecting with outputDesc.DesktopCoordinates.
-
-Each worker keeps a list of regions (per window) to crop/copy.
-
-Frame loop per worker
-
-If subscriber_count == 0: wait on a condition variable; no duplication active.
-
-Else:
-
-AcquireNextFrame(timeout) → copy only the needed rects to per-window shared textures (or CPU staging if you post-process on CPU).
-
-Signal the target window/render thread via lock-free queue/event.
-
-Different refresh rates? Fine: each worker naturally blocks on its own output’s frames; your renderer composes whatever arrives.
-
-Sharing to window threads
-
-Prefer shared D3D11 textures (IDXGIResource1::CreateSharedHandle) and CopySubresourceRegion per rect; the UI thread opens the shared handle and composites with DirectComposition/Direct2D.
-
-If you apply color effects on GPU, do it in the window’s D3D11/DComp pass from the shared texture (constant buffer → pixel shader).
-
-Window spanning multiple monitors
-
-The window manager registers two (or more) sub-rects—one per intersecting output.
-
-You’ll receive independent frame updates from each worker; the window thread composites the sub-textures into the correct places in window space.
-
-Handle scaling/rotation by mapping desktop → output space using outputDesc.DesktopCoordinates and the current transform; apply DPI scaling in your vertex transform.

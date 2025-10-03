@@ -32,12 +32,13 @@ namespace {
             uint enableInvert;
             uint enableMatrix;
             uint enableColorMap;
-            float3 lumaWeights;
             float _pad1; // Padding for alignment
+            float3 lumaWeights;
+            float _pad2; // Padding for alignment
             row_major float4x4 colorMat;
             float4   colorOffset;
             uint colorMapCount;
-            float3 _pad2; // Padding for alignment
+            float3 _pad3; // Padding for alignment
             float4 colorMapSrc[64];
             float4 colorMapDst[64];
         };
@@ -120,6 +121,9 @@ void EffectWindow::OnFrameReady(ComPtr<ID3D11Texture2D>)
 void EffectWindow::UpdateSettings(const EffectSettings& settings)
 {
     m_settings = settings;
+    // Reset brightness protection debounce when settings change
+    m_brightProtPendingCount = 0;
+    m_brightProtPendingState = m_effectiveInvert;
     // Request an immediate redraw so changes are visible without desktop activity
     if (m_thread) m_thread->RequestRedraw();
 }
@@ -538,22 +542,57 @@ void EffectWindow::Render(ID3D11Texture2D* frame, unsigned long long lastPresent
             m_avgLuma = r * m_settings.lumaWeights[0] + g * m_settings.lumaWeights[1] + b * m_settings.lumaWeights[2];
             m_immediateCtx->Unmap(m_mipReadback1x1.Get(), 0);
 
-            bool previousInvert = m_effectiveInvert;
-            // Always choose the darker result: compare original luma to inverted luma.
-            // The luminance of the inverted color is 1.0 - luma (assuming weights sum to 1).
+            // Determine desired state: choose the darker result by comparing luma to inverted luma.
             float invertedLuma = 1.0f - m_avgLuma;
-            m_effectiveInvert = (invertedLuma < m_avgLuma);
-
-            if (m_effectiveInvert != previousInvert)
+            bool desired = (invertedLuma < m_avgLuma);
+            int delay = (m_settings.brightnessProtectionDelayFrames < 0) ? 0 : m_settings.brightnessProtectionDelayFrames;
+            if (delay <= 0)
             {
-                winvert4::Logf("EW: Brightness protection flipped to %s (Luma: %.3f, Inverted Luma: %.3f)",
-                    m_effectiveInvert ? "ON" : "OFF", m_avgLuma, invertedLuma);
+                bool previousInvert = m_effectiveInvert;
+                m_effectiveInvert = desired;
+                if (m_effectiveInvert != previousInvert)
+                {
+                    winvert4::Logf("EW: Brightness protection flipped to %s (Luma: %.3f, Inverted Luma: %.3f)",
+                        m_effectiveInvert ? "ON" : "OFF", m_avgLuma, invertedLuma);
+                }
+                m_brightProtPendingCount = 0;
+                m_brightProtPendingState = desired;
+            }
+            else
+            {
+                if (desired == m_effectiveInvert)
+                {
+                    // Already matched; clear pending
+                    m_brightProtPendingCount = 0;
+                    m_brightProtPendingState = desired;
+                }
+                else
+                {
+                    if (m_brightProtPendingCount == 0 || m_brightProtPendingState != desired)
+                    {
+                        m_brightProtPendingState = desired;
+                        m_brightProtPendingCount = 1;
+                    }
+                    else
+                    {
+                        m_brightProtPendingCount++;
+                    }
+
+                    if (m_brightProtPendingCount >= delay)
+                    {
+                        m_effectiveInvert = desired;
+                        m_brightProtPendingCount = 0;
+                        winvert4::Logf("EW: Brightness protection flipped (delayed %d) to %s (Luma: %.3f, Inverted Luma: %.3f)",
+                            delay, m_effectiveInvert ? "ON" : "OFF", m_avgLuma, invertedLuma);
+                    }
+                }
             }
         }
     }
     else
     {
         m_effectiveInvert = m_settings.isInvertEffectEnabled;
+        m_brightProtPendingCount = 0;
     }
 
     // Recreate RTV each frame (resize-robust)

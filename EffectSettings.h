@@ -19,6 +19,8 @@ struct EffectSettings
 
     // Brightness Protection
     bool isBrightnessProtectionEnabled = false;
+    // Frames of stability required before brightness protection toggles invert
+    int  brightnessProtectionDelayFrames = 0; // 0 = immediate
 
     // Custom Matrix Filter
     bool isCustomEffectActive = false;
