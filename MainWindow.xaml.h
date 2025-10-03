@@ -189,6 +189,9 @@ namespace winrt::Winvert4::implementation
 
         void ComposeSimpleMatrix(float (&outMat)[16], float (&outOff)[4]);
         void WriteMatrixToGrid(const float (&mat)[16], const float (&off)[4]);
+        void EnsureFilterMatrixGridInitialized();
+        void ReadMatrixFromGrid(float (&outMat)[16], float (&outOff)[4]);
+        void UpdateSlidersFromMatrix(const float (&mat)[16], const float (&off)[4]);
 
         // --- UI Helpers ---
         void UpdateUIState();
@@ -228,6 +231,7 @@ namespace winrt::Winvert4::implementation
         // --- UI reentrancy guards ---
         bool m_isProgrammaticColorPickerChange{ false };
         bool m_isUpdatingColorMapUI{ false };
+        bool m_isUpdatingSimpleUI{ false };
     };
 }
 

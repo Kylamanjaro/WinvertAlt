@@ -383,7 +383,8 @@ namespace winrt::Winvert4::implementation
         RootPanel().Visibility(Visibility::Collapsed);
         SettingsPanel().Visibility(Visibility::Visible);
 
-        if (auto panel = FilterEditorPanel()) panel.Visibility(Visibility::Collapsed);
+        // Ensure the editor is visible by default when opening settings
+        if (auto panel = FilterEditorPanel()) panel.Visibility(Visibility::Visible);
 
         auto windowId = winrt::Microsoft::UI::GetWindowIdFromWindow(m_mainHwnd);
         auto appWindow = winrt::Microsoft::UI::Windowing::AppWindow::GetFromWindowId(windowId);
@@ -484,10 +485,10 @@ namespace winrt::Winvert4::implementation
         if (SelectionColorExpander()) SelectionColorExpander().IsExpanded(false);
         if (UpdateRateExpander()) UpdateRateExpander().IsExpanded(false);
         if (HotkeysExpander()) HotkeysExpander().IsExpanded(false);
-        if (CustomFiltersExpander()) CustomFiltersExpander().IsExpanded(false);
-
-        // Hide editor panel by default
-        if (FilterEditorPanel()) FilterEditorPanel().Visibility(Visibility::Collapsed);
+        // Keep Custom Filters expanded so sliders are immediately usable
+        if (CustomFiltersExpander()) CustomFiltersExpander().IsExpanded(true);
+        // Keep editor panel visible
+        if (FilterEditorPanel()) FilterEditorPanel().Visibility(Visibility::Visible);
     }
 
     void winrt::Winvert4::implementation::MainWindow::CustomFiltersExpander_Collapsed(IInspectable const&, Microsoft::UI::Xaml::Controls::ExpanderCollapsedEventArgs const&)
@@ -509,6 +510,16 @@ namespace winrt::Winvert4::implementation
             advPanel = root.FindName(L"AdvancedMatrixPanel").try_as<Controls::StackPanel>();
         }
         if (advPanel) advPanel.Visibility(advanced ? Visibility::Visible : Visibility::Collapsed);
+        // If switching to advanced, generate the corresponding matrix from current slider values
+        if (advanced)
+        {
+            float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
+        }
+        else
+        {
+            // Switching back to simple: infer slider values from current matrix grid
+            float m[16], off[4]; ReadMatrixFromGrid(m, off); UpdateSlidersFromMatrix(m, off);
+        }
     }
 
     void winrt::Winvert4::implementation::MainWindow::ComposeSimpleMatrix(float (&outMat)[16], float (&outOff)[4])
@@ -548,9 +559,119 @@ namespace winrt::Winvert4::implementation
         outOff[0] += b; outOff[1] += b; outOff[2] += b;
     }
 
+    void winrt::Winvert4::implementation::MainWindow::EnsureFilterMatrixGridInitialized()
+    {
+        auto grid = FilterMatrixGrid();
+        if (!grid) return;
+        if (grid.Children().Size() > 0) return;
+
+        for (int r = 0; r < 5; ++r)
+        {
+            for (int c = 0; c < 5; ++c)
+            {
+                auto tb = Microsoft::UI::Xaml::Controls::TextBox();
+                tb.TextAlignment(Microsoft::UI::Xaml::TextAlignment::Center);
+                tb.Width(60); tb.Height(32);
+                Microsoft::UI::Xaml::Controls::Grid::SetRow(tb, r);
+                Microsoft::UI::Xaml::Controls::Grid::SetColumn(tb, c);
+                grid.Children().Append(tb);
+            }
+        }
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::ReadMatrixFromGrid(float (&outMat)[16], float (&outOff)[4])
+    {
+        for (int i = 0; i < 16; ++i) outMat[i] = 0.0f;
+        outMat[0] = outMat[5] = outMat[10] = outMat[15] = 1.0f;
+        for (int i = 0; i < 4; ++i) outOff[i] = 0.0f;
+        auto grid = FilterMatrixGrid(); if (!grid) return;
+        EnsureFilterMatrixGridInitialized();
+        for (auto child : grid.Children())
+        {
+            auto tb = child.try_as<TextBox>(); if (!tb) continue;
+            int r = Microsoft::UI::Xaml::Controls::Grid::GetRow(tb);
+            int c = Microsoft::UI::Xaml::Controls::Grid::GetColumn(tb);
+            try {
+                float v = std::stof(std::wstring(tb.Text()));
+                if (r >= 0 && r < 4 && c >= 0 && c < 4) outMat[r * 4 + c] = v;
+                else if (r >= 0 && r < 4 && c == 4) outOff[r] = v;
+            } catch (...) {}
+        }
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::UpdateSlidersFromMatrix(const float (&mat)[16], const float (&off)[4])
+    {
+        // Infer simple params from mat/off produced by ComposeSimpleMatrix
+        // Using default luminance weights used in composition
+        const float Lr = kDefaultLumaWeights[0], Lg = kDefaultLumaWeights[1], Lb = kDefaultLumaWeights[2];
+        auto clampf = [](float v, float lo, float hi){ return (v < lo) ? lo : (v > hi ? hi : v); };
+
+        // 3x3 rows
+        float A00 = mat[0],  A01 = mat[1],  A02 = mat[2];
+        float A10 = mat[4],  A11 = mat[5],  A12 = mat[6];
+        float A20 = mat[8],  A21 = mat[9],  A22 = mat[10];
+
+        float kR = A00 + A01 + A02; if (fabs(kR) < 1e-6f) kR = 1e-6f;
+        float kG = A10 + A11 + A12; if (fabs(kG) < 1e-6f) kG = 1e-6f;
+        float kB = A20 + A21 + A22; if (fabs(kB) < 1e-6f) kB = 1e-6f;
+
+        float vR0 = A00 / kR, vR1 = A01 / kR, vR2 = A02 / kR;
+        float vG0 = A10 / kG, vG1 = A11 / kG, vG2 = A12 / kG;
+        float vB0 = A20 / kB, vB1 = A21 / kB, vB2 = A22 / kB;
+
+        float oneMinusSR = (vR1 + vR2) / (1.0f - Lr);
+        float oneMinusSG = (vG0 + vG2) / (1.0f - Lg);
+        float oneMinusSB = (vB0 + vB1) / (1.0f - Lb);
+        float sR = 1.0f - oneMinusSR;
+        float sG = 1.0f - oneMinusSG;
+        float sB = 1.0f - oneMinusSB;
+        float sat = clampf((sR + sG + sB) / 3.0f, 0.0f, 1.0f);
+
+        // Solve tint/temperature from row gain ratios
+        float Rratio = kR / kG;
+        float Bratio = kB / kG;
+        // ti (x)
+        float denom = (Rratio + Bratio + 1.0f);
+        float ti = 0.0f;
+        if (fabs(denom) > 1e-6f)
+            ti = 10.0f * (2.0f - (Rratio + Bratio)) / denom;
+        float t = ((Rratio - Bratio) * (1.0f + 0.10f * ti)) / 0.30f;
+
+        float rScale = 1.0f + 0.15f * t - 0.05f * ti;
+        float gScale = 1.0f + 0.10f * ti;
+        float bScale = 1.0f - 0.15f * t - 0.05f * ti;
+        if (fabs(rScale) < 1e-6f) rScale = (rScale < 0 ? -1e-6f : 1e-6f);
+        if (fabs(gScale) < 1e-6f) gScale = (gScale < 0 ? -1e-6f : 1e-6f);
+        if (fabs(bScale) < 1e-6f) bScale = (bScale < 0 ? -1e-6f : 1e-6f);
+
+        float cR = kR / rScale;
+        float cG = kG / gScale;
+        float cB = kB / bScale;
+        float contrast = clampf((cR + cG + cB) / 3.0f, 0.0f, 2.0f);
+
+        float offAvg = (off[0] + off[1] + off[2]) / 3.0f;
+        float co = 0.5f * (1.0f - contrast);
+        float brightness = clampf(offAvg - co, -1.0f, 1.0f);
+
+        // Apply to model + UI with reentrancy guard
+        m_isUpdatingSimpleUI = true;
+        m_simpleBrightness = brightness;
+        m_simpleContrast   = contrast;
+        m_simpleSaturation = sat;
+        m_simpleTemperature = t;
+        m_simpleTint = ti;
+
+        if (auto s = BrightnessSlider()) s.Value(m_simpleBrightness);
+        if (auto s = ContrastSlider())   s.Value(m_simpleContrast);
+        if (auto s = SaturationSlider()) s.Value(m_simpleSaturation);
+        if (auto s = TemperatureSlider()) s.Value(m_simpleTemperature);
+        if (auto s = TintSlider())        s.Value(m_simpleTint);
+        m_isUpdatingSimpleUI = false;
+    }
     void winrt::Winvert4::implementation::MainWindow::WriteMatrixToGrid(const float (&mat)[16], const float (&off)[4])
     {
         auto grid = FilterMatrixGrid(); if (!grid) return;
+        EnsureFilterMatrixGridInitialized();
         for (auto child : grid.Children())
         {
             auto tb = child.try_as<TextBox>(); if (!tb) continue;
@@ -567,6 +688,7 @@ namespace winrt::Winvert4::implementation
 
     void winrt::Winvert4::implementation::MainWindow::BrightnessSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
     {
+        if (m_isUpdatingSimpleUI) return;
         m_simpleBrightness = static_cast<float>(e.NewValue());
         float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
         if (m_isPreviewActive)
@@ -586,6 +708,7 @@ namespace winrt::Winvert4::implementation
     
     void winrt::Winvert4::implementation::MainWindow::ContrastSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
     {
+        if (m_isUpdatingSimpleUI) return;
         m_simpleContrast = static_cast<float>(e.NewValue());
         float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
         if (m_isPreviewActive)
@@ -605,6 +728,7 @@ namespace winrt::Winvert4::implementation
 
     void winrt::Winvert4::implementation::MainWindow::SaturationSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
     {
+        if (m_isUpdatingSimpleUI) return;
         m_simpleSaturation = static_cast<float>(e.NewValue());
         float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
         if (m_isPreviewActive)
@@ -624,6 +748,7 @@ namespace winrt::Winvert4::implementation
 
     void winrt::Winvert4::implementation::MainWindow::TemperatureSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
     {
+        if (m_isUpdatingSimpleUI) return;
         m_simpleTemperature = static_cast<float>(e.NewValue());
         float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
         if (m_isPreviewActive)
@@ -643,6 +768,7 @@ namespace winrt::Winvert4::implementation
 
     void winrt::Winvert4::implementation::MainWindow::TintSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
     {
+        if (m_isUpdatingSimpleUI) return;
         m_simpleTint = static_cast<float>(e.NewValue());
         float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
         if (m_isPreviewActive)
@@ -1677,6 +1803,7 @@ void winrt::Winvert4::implementation::MainWindow::SavedFiltersComboBox_Selection
     auto& sf = m_savedFilters[sel];
     auto grid = FilterMatrixGrid();
     if (!grid) return;
+    EnsureFilterMatrixGridInitialized();
 
     // Ensure editor visible
     if (auto panel = FilterEditorPanel()) panel.Visibility(Visibility::Visible);
@@ -1697,6 +1824,8 @@ void winrt::Winvert4::implementation::MainWindow::SavedFiltersComboBox_Selection
         wchar_t buf[32]; swprintf_s(buf, L"%.3f", v);
         tb.Text(buf);
     }
+    // Also push corresponding slider values so modes correlate
+    UpdateSlidersFromMatrix(sf.mat, sf.offset);
 }
 
 void winrt::Winvert4::implementation::MainWindow::FilterMenuItem_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)

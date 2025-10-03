@@ -198,10 +198,9 @@
                                             <ColumnDefinition Width="auto"/>
                                         </Grid.ColumnDefinitions>
                                         <ComboBox x:Name="SavedFiltersComboBox" Grid.Column="0" HorizontalAlignment="Stretch" SelectionChanged="SavedFiltersComboBox_SelectionChanged" IsEditable="True" PlaceholderText="Filter name"/>
-                                        <Button x:Name="AddNewFilterButton" Grid.Column="1" Content="Add" Click="AddNewFilterButton_Click" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </Grid>
                                     <!-- Editor panel -->
-                                    <StackPanel x:Name="FilterEditorPanel" Spacing="5" Visibility="Collapsed">
+                                    <StackPanel x:Name="FilterEditorPanel" Spacing="5" Visibility="Visible">
                                         <!-- Advanced matrix moved to SimpleFilterPanel to share space with sliders -->
                                         <!-- Simple Mode Controls -->
                                         <StackPanel x:Name="SimpleFilterPanel" Spacing="8" Margin="0,10,0,0">
