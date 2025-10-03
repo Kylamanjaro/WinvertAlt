@@ -237,5 +237,8 @@
     <Media Include="Assets\mapping_on.svg">
       <Filter>Assets</Filter>
     </Media>
+    <Media Include="Assets\arrow_right.svg">
+      <Filter>Assets</Filter>
+    </Media>
   </ItemGroup>
 </Project>

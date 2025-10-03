@@ -5,6 +5,8 @@
 #include <winrt/Microsoft.UI.Windowing.h>
 #include <winrt/Microsoft.UI.Xaml.Input.h>
 #include <winrt/Windows.System.h>
+#include <winrt/Microsoft.UI.Xaml.Shapes.h>
+#include <winrt/Windows.Storage.h>
 #include <gdiplus.h>
 #include <microsoft.ui.xaml.window.h>
 
@@ -214,6 +216,8 @@ namespace winrt::Winvert4::implementation
         ::ShowWindow(m_mainHwnd, SW_HIDE);
 
         UpdateUIState();
+        // Load persisted color maps
+        LoadGlobalColorMaps();
         UpdateAllHotkeyText();
         SetWindowSize(360, 120); // Prepare initial size, but keep window hidden
 
@@ -263,6 +267,8 @@ namespace winrt::Winvert4::implementation
         auto& s = m_windowSettings[idx];
         s.isBrightnessProtectionEnabled = !s.isBrightnessProtectionEnabled;
         UpdateUIState();
+        // Load persisted color maps
+        LoadGlobalColorMaps();
         // Push to all effect windows in the group immediately
         ApplyGlobalColorMapsToSettings(s);
         UpdateSettingsForGroup(idx, s);
@@ -275,6 +281,8 @@ namespace winrt::Winvert4::implementation
         auto& s = m_windowSettings[idx];
         s.isInvertEffectEnabled = !s.isInvertEffectEnabled;
         UpdateUIState();
+        // Load persisted color maps
+        LoadGlobalColorMaps();
         ApplyGlobalColorMapsToSettings(s);
         UpdateSettingsForGroup(idx, s);
     }
@@ -342,6 +350,8 @@ namespace winrt::Winvert4::implementation
             RegionsTabView().SelectedIndex(static_cast<int>(std::min<uint32_t>(items.Size() - 1, static_cast<uint32_t>(idx))));
         }
         UpdateUIState();
+        // Load persisted color maps
+        LoadGlobalColorMaps();
     }
 
     void winrt::Winvert4::implementation::MainWindow::HideAllWindows_Click(IInspectable const&, RoutedEventArgs const&)
@@ -353,6 +363,8 @@ namespace winrt::Winvert4::implementation
         m_windowHidden[idx] = !m_windowHidden[idx];
         SetHiddenForGroup(idx, m_windowHidden[idx]);
         UpdateUIState();
+        // Load persisted color maps
+        LoadGlobalColorMaps();
     }
 
     void winrt::Winvert4::implementation::MainWindow::SettingsButton_Click(IInspectable const&, RoutedEventArgs const&)
@@ -363,6 +375,8 @@ namespace winrt::Winvert4::implementation
             m_areWindowsHidden = true;
             SetHiddenForAll(true);
             UpdateUIState();
+        // Load persisted color maps
+        LoadGlobalColorMaps();
         }
 
         RootPanel().Visibility(Visibility::Collapsed);
@@ -416,6 +430,7 @@ namespace winrt::Winvert4::implementation
             }
         }
         RefreshColorMapList();
+        SaveGlobalColorMaps();
     }
 
     void winrt::Winvert4::implementation::MainWindow::BackButton_Click(IInspectable const&, RoutedEventArgs const&)
@@ -1159,6 +1174,8 @@ namespace winrt::Winvert4::implementation
             winvert4::Log("MainWindow: ShowWindow(SW_SHOW) control panel");
             m_controlPanelShownYet = true;
             UpdateUIState();
+        // Load persisted color maps
+        LoadGlobalColorMaps();
             SetWindowSize(360, 120);
         }
     }
@@ -1579,6 +1596,7 @@ namespace winrt::Winvert4::implementation
         }
         m_globalColorMaps.push_back(e);
         RefreshColorMapList();
+        SaveGlobalColorMaps();
         int idxSel = SelectedTabIndex();
         if (idxSel >= 0 && idxSel < static_cast<int>(m_windowSettings.size()))
         {
@@ -1783,13 +1801,18 @@ namespace winrt::Winvert4::implementation
                 RegionsTabView().SelectedIndex(static_cast<int>(std::min<uint32_t>(items.Size() - 1, index)));
             }
             UpdateUIState();
+        // Load persisted color maps
+        LoadGlobalColorMaps();
         }
     }
 
     void winrt::Winvert4::implementation::MainWindow::RegionsTabView_SelectionChanged(IInspectable const&, Controls::SelectionChangedEventArgs const&)
     {
         UpdateUIState();
+        // Load persisted color maps
+        LoadGlobalColorMaps();
         RefreshColorMapList();
+        SaveGlobalColorMaps();
     }
 
     LRESULT CALLBACK MainWindow::WindowSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
@@ -2426,7 +2449,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
 
             // Src swatch
             Controls::Button srcBtn{};
-            srcBtn.Width(28); srcBtn.Height(28);
+            srcBtn.Width(36); srcBtn.Height(36);
             srcBtn.HorizontalAlignment(HorizontalAlignment::Stretch);
             srcBtn.VerticalAlignment(VerticalAlignment::Center);
             srcBtn.Padding(ThicknessHelper::FromUniformLength(0));
@@ -2441,17 +2464,21 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             Controls::Grid::SetColumn(srcBtn, 1);
             rowGrid.Children().Append(srcBtn);
 
-            // Arrow
-            Controls::TextBlock arrow{};
-            arrow.Text(L"â†’");
-            arrow.VerticalAlignment(VerticalAlignment::Center);
-            arrow.HorizontalAlignment(HorizontalAlignment::Center);
-            Controls::Grid::SetColumn(arrow, 2);
-            rowGrid.Children().Append(arrow);
+            // Arrow (SVG image)
+            {
+                Controls::Image arrowImg{};
+                arrowImg.Height(32);
+                arrowImg.HorizontalAlignment(HorizontalAlignment::Center);
+                arrowImg.VerticalAlignment(VerticalAlignment::Center);
+                Imaging::SvgImageSource svgSrc(Uri(L"ms-appx:///Assets/arrow_right.svg"));
+                arrowImg.Source(svgSrc);
+                Controls::Grid::SetColumn(arrowImg, 2);
+                rowGrid.Children().Append(arrowImg);
+            }
 
             // Dst swatch
             Controls::Button dstBtn{};
-            dstBtn.Width(28); dstBtn.Height(28);
+            dstBtn.Width(36); dstBtn.Height(36);
             dstBtn.HorizontalAlignment(HorizontalAlignment::Stretch);
             dstBtn.VerticalAlignment(VerticalAlignment::Center);
             dstBtn.Padding(ThicknessHelper::FromUniformLength(0));
@@ -2473,6 +2500,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             tol.StepFrequency(1);
             tol.Value(maps[i].tolerance);
             tol.Tag(box_value(i));
+            tol.VerticalAlignment(VerticalAlignment::Center);
             tol.ValueChanged([this](auto const& s, auto const& e){ ColorMapToleranceSlider_ValueChanged(s, e); });
             Controls::Grid::SetColumn(tol, 4);
             rowGrid.Children().Append(tol);
@@ -2489,6 +2517,63 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
         }
     }
 
+
+    void winrt::Winvert4::implementation::MainWindow::SaveGlobalColorMaps()
+    {
+        using winrt::Windows::Storage::ApplicationData;
+        std::wstring s;
+        for (const auto& e : m_globalColorMaps)
+        {
+            s += (e.enabled ? L"1" : L"0"); s += L",";
+            s += std::to_wstring(e.srcR); s += L","; s += std::to_wstring(e.srcG); s += L","; s += std::to_wstring(e.srcB); s += L",";
+            s += std::to_wstring(e.dstR); s += L","; s += std::to_wstring(e.dstG); s += L","; s += std::to_wstring(e.dstB); s += L",";
+            s += std::to_wstring(e.tolerance);
+            s += L"|";
+        }
+        auto local = ApplicationData::Current().LocalSettings();
+        local.Values().Insert(L"ColorMaps", box_value(winrt::hstring{ s }));
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::LoadGlobalColorMaps()
+    {
+        using winrt::Windows::Storage::ApplicationData;
+        auto local = ApplicationData::Current().LocalSettings();
+        auto boxed = local.Values().TryLookup(L"ColorMaps");
+        if (!boxed) return;
+        winrt::hstring hs = unbox_value_or<winrt::hstring>(boxed, L"");
+        if (hs.empty()) return;
+        std::wstring s{ hs.c_str() };
+        m_globalColorMaps.clear();
+        size_t pos = 0;
+        while (pos < s.size())
+        {
+            size_t next = s.find(L'|', pos);
+            std::wstring row = s.substr(pos, next == std::wstring::npos ? std::wstring::npos : next - pos);
+            if (!row.empty())
+            {
+                ColorMapEntry e{};
+                int vals[8]{}; int idx = 0;
+                size_t last = 0; size_t p2;
+                while ((p2 = row.find(L',', last)) != std::wstring::npos && idx < 7)
+                {
+                    vals[idx++] = _wtoi(row.substr(last, p2 - last).c_str());
+                    last = p2 + 1;
+                }
+                if (last < row.size()) vals[idx++] = _wtoi(row.substr(last).c_str());
+                if (idx >= 8)
+                {
+                    e.enabled = vals[0] != 0;
+                    e.srcR = (uint8_t)vals[1]; e.srcG = (uint8_t)vals[2]; e.srcB = (uint8_t)vals[3];
+                    e.dstR = (uint8_t)vals[4]; e.dstG = (uint8_t)vals[5]; e.dstB = (uint8_t)vals[6];
+                    e.tolerance = vals[7];
+                    m_globalColorMaps.push_back(e);
+                }
+            }
+            if (next == std::wstring::npos) break;
+            pos = next + 1;
+        }
+        RefreshColorMapList();
+    }
     void winrt::Winvert4::implementation::MainWindow::ColorMappingToggle_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         int idx = SelectedTabIndex();
@@ -2498,6 +2583,8 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
         ApplyGlobalColorMapsToSettings(s);
         UpdateSettingsForGroup(idx, s);
         UpdateUIState();
+        // Load persisted color maps
+        LoadGlobalColorMaps();
     }
 
     void winrt::Winvert4::implementation::MainWindow::ColorMapAddButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -2505,6 +2592,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
         ColorMapEntry e{};
         m_globalColorMaps.push_back(e);
         RefreshColorMapList();
+        SaveGlobalColorMaps();
     }
 
     void winrt::Winvert4::implementation::MainWindow::ColorMapEnable_Toggled(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -2530,6 +2618,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
                 }
             }
         }
+        SaveGlobalColorMaps();
     }
 
     void winrt::Winvert4::implementation::MainWindow::ColorMapSourceSwatch_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -2619,6 +2708,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             }
             }
         }
+        SaveGlobalColorMaps();
     }
 
     void winrt::Winvert4::implementation::MainWindow::ColorMapToleranceSlider_ValueChanged(winrt::Windows::Foundation::IInspectable const& sender, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
@@ -2646,6 +2736,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
                 }
             }
         }
+        SaveGlobalColorMaps();
     }
 
     void winrt::Winvert4::implementation::MainWindow::ColorMapRemoveButton_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -2657,7 +2748,8 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
         if (m_selectedColorMapRowIndex == row) { m_selectedColorMapRowIndex = -1; }
         else if (m_selectedColorMapRowIndex > row) { m_selectedColorMapRowIndex--; }
         RefreshColorMapList();
-        // Push live update if mapping is enabled for the selected window
+        SaveGlobalColorMaps();
+// Push live update if mapping is enabled for the selected window
         {
             int idxSel = SelectedTabIndex();
             if (idxSel >= 0 && idxSel < static_cast<int>(m_windowSettings.size()))
@@ -2669,9 +2761,10 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
                 }
             }
         }
+        SaveGlobalColorMaps();
     }
 
-    void winrt::Winvert4::implementation::MainWindow::PreviewColorMapButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+void winrt::Winvert4::implementation::MainWindow::PreviewColorMapButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         int idx = SelectedTabIndex();
         if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
@@ -2706,5 +2799,46 @@ int winrt::Winvert4::implementation::MainWindow::FavoriteFilterIndex() const
 {
     return m_favoriteFilterIndex;
 }
+void winrt::Winvert4::implementation::MainWindow::PreviewColorMapToggle_Checked(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+{
+    int idx = SelectedTabIndex();
+    if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
+    if (static_cast<int>(m_hasPreviewBackup.size()) <= idx) { m_hasPreviewBackup.resize(idx + 1, false); m_previewBackup.resize(idx + 1); }
+    if (!m_hasPreviewBackup[idx]) { m_previewBackup[idx] = m_windowSettings[idx]; m_hasPreviewBackup[idx] = true; }
+    m_windowSettings[idx].isInvertEffectEnabled = false;
+    m_windowSettings[idx].isBrightnessProtectionEnabled = false;
+    m_windowSettings[idx].isCustomEffectActive = false;
+    m_windowSettings[idx].isColorMappingEnabled = true;
+    ApplyGlobalColorMapsToSettings(m_windowSettings[idx]);
+    UpdateSettingsForGroup(idx);
+    m_isPreviewActive = true;
+    SetHiddenForGroup(idx, false);
+}
+void winrt::Winvert4::implementation::MainWindow::PreviewColorMapToggle_Unchecked(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+{
+    int idx = SelectedTabIndex(); if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
+    if (idx < static_cast<int>(m_hasPreviewBackup.size()) && m_hasPreviewBackup[idx])
+    {
+        m_windowSettings[idx] = m_previewBackup[idx];
+        m_hasPreviewBackup[idx] = false;
+        UpdateSettingsForGroup(idx);
+    }
+    bool anyPreview = false; for (bool b : m_hasPreviewBackup) { if (b) { anyPreview = true; break; } }
+    m_isPreviewActive = anyPreview;
+    SetHiddenForGroup(idx, true);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
