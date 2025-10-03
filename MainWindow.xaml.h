@@ -89,8 +89,10 @@ namespace winrt::Winvert4::implementation
     private:
         // Global low-level mouse hook for one-shot sampling
         static HHOOK s_mouseHook;
+        static HHOOK s_keyboardHook;
         static MainWindow* s_samplingInstance;
         static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam);
+        static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam);
 
         static LRESULT CALLBACK SelectionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
         static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData);
@@ -230,6 +232,7 @@ namespace winrt::Winvert4::implementation
         // --- Color sampling state ---
         bool m_isSamplingColor{ false };
         void StartColorSample();
+        void CancelColorSample();
         void OnColorSampled(POINT ptClient);
 
         // --- UI reentrancy guards ---

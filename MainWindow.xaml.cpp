@@ -33,6 +33,7 @@ namespace
 std::vector<RECT> winrt::Winvert4::implementation::MainWindow::s_monitorRects;
 
 HHOOK winrt::Winvert4::implementation::MainWindow::s_mouseHook = nullptr;
+HHOOK winrt::Winvert4::implementation::MainWindow::s_keyboardHook = nullptr;
 winrt::Winvert4::implementation::MainWindow* winrt::Winvert4::implementation::MainWindow::s_samplingInstance = nullptr;
 
 LRESULT CALLBACK winrt::Winvert4::implementation::MainWindow::LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam)
@@ -68,11 +69,39 @@ LRESULT CALLBACK winrt::Winvert4::implementation::MainWindow::LowLevelMouseProc(
         if (self && self->m_isSamplingColor)
         {
             POINT pt = p->pt;
+            // Force default cursor while sampling
+            SetCursor(LoadCursorW(nullptr, IDC_ARROW));
             auto dq = self->DispatcherQueue();
             dq.TryEnqueue([self, pt]() { self->MoveSampleOverlay(pt); });
         }
     }
     return CallNextHookEx(MainWindow::s_mouseHook, nCode, wParam, lParam);
+}
+
+LRESULT CALLBACK winrt::Winvert4::implementation::MainWindow::LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
+{
+    if (nCode >= 0 && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN))
+    {
+        auto p = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
+        if (p->vkCode == VK_ESCAPE)
+        {
+            auto self = MainWindow::s_samplingInstance;
+            if (self && self->m_isSamplingColor)
+            {
+                auto dq = self->DispatcherQueue();
+                dq.TryEnqueue([self]() {
+                    self->CancelColorSample();
+                });
+            }
+            if (MainWindow::s_keyboardHook)
+            {
+                UnhookWindowsHookEx(MainWindow::s_keyboardHook);
+                MainWindow::s_keyboardHook = nullptr;
+            }
+            return 1; // swallow ESC
+        }
+    }
+    return CallNextHookEx(MainWindow::s_keyboardHook, nCode, wParam, lParam);
 }
 
 namespace winrt::Winvert4::implementation
@@ -1495,9 +1524,29 @@ namespace winrt::Winvert4::implementation
         // Install a low-level mouse hook to capture the next click and swallow it
         s_samplingInstance = this;
         s_mouseHook = SetWindowsHookExW(WH_MOUSE_LL, &MainWindow::LowLevelMouseProc, GetModuleHandleW(nullptr), 0);
+        // Install a low-level keyboard hook to allow ESC cancellation
+        s_keyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, &MainWindow::LowLevelKeyboardProc, GetModuleHandleW(nullptr), 0);
         // Show overlay following the cursor
         ShowSampleOverlay();
         POINT pt{}; GetCursorPos(&pt); MoveSampleOverlay(pt);
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::CancelColorSample()
+    {
+        m_isSamplingColor = false;
+        HideSampleOverlay();
+        if (auto btn = ColorMapSampleButton()) { btn.Content(box_value(L"Sample")); btn.IsEnabled(true); }
+        if (MainWindow::s_mouseHook)
+        {
+            UnhookWindowsHookEx(MainWindow::s_mouseHook);
+            MainWindow::s_mouseHook = nullptr;
+        }
+        if (MainWindow::s_keyboardHook)
+        {
+            UnhookWindowsHookEx(MainWindow::s_keyboardHook);
+            MainWindow::s_keyboardHook = nullptr;
+        }
+        MainWindow::s_samplingInstance = nullptr;
     }
 
     void winrt::Winvert4::implementation::MainWindow::OnColorSampled(POINT ptScreen)
