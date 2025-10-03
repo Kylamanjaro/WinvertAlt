@@ -1596,9 +1596,21 @@ namespace winrt::Winvert4::implementation
     // --- Sampling overlay (magnifier) implementation ---
     LRESULT CALLBACK winrt::Winvert4::implementation::MainWindow::SampleOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     {
-        if (msg == WM_NCHITTEST) return HTTRANSPARENT; // click-through
-        if (msg == WM_ERASEBKGND) return 1;
-        return DefWindowProcW(hwnd, msg, wParam, lParam);
+        switch (msg)
+        {
+        case WM_NCHITTEST:
+            // Treat as a normal client area so this window owns hit-tests.
+            // Low-level hook still consumes clicks, but cursor comes from us.
+            return HTCLIENT;
+        case WM_SETCURSOR:
+            // Force default arrow cursor regardless of underlying app
+            SetCursor(LoadCursorW(nullptr, IDC_ARROW));
+            return TRUE;
+        case WM_ERASEBKGND:
+            return 1;
+        default:
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        }
     }
 
     void winrt::Winvert4::implementation::MainWindow::ShowSampleOverlay()
@@ -1611,7 +1623,7 @@ namespace winrt::Winvert4::implementation
         static ATOM atom = 0; if (!atom) atom = RegisterClassW(&wc);
         int sz = m_sampleOverlaySize;
         m_sampleOverlayHwnd = CreateWindowExW(
-            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_LAYERED,
+            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED,
             wc.lpszClassName, L"", WS_POPUP,
             0, 0, sz, sz, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
         if (m_sampleOverlayHwnd)
