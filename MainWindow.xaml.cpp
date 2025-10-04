@@ -2508,6 +2508,12 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             cb.Tag(box_value(i));
             cb.HorizontalAlignment(HorizontalAlignment::Center);
             cb.VerticalAlignment(VerticalAlignment::Center);
+            // Ensure the glyph itself centers by removing template padding
+            // and centering the content within the control.
+            cb.HorizontalContentAlignment(HorizontalAlignment::Center);
+            cb.Padding(ThicknessHelper::FromUniformLength(0));
+            cb.MinWidth(0);
+            cb.Content(box_value(L""));
             cb.Checked([this](auto const& s, auto const& e){ ColorMapEnable_Toggled(s, e); });
             cb.Unchecked([this](auto const& s, auto const& e){ ColorMapEnable_Toggled(s, e); });
             Controls::Grid::SetColumn(cb, 0);
