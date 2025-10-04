@@ -9,6 +9,8 @@
 #include <winrt/Windows.Storage.h>
 #include <gdiplus.h>
 #include <microsoft.ui.xaml.window.h>
+#include <algorithm>
+#include <cwctype>
 
 #if __has_include("MainWindow.g.cpp")
 #include "MainWindow.g.cpp"
@@ -2073,14 +2075,27 @@ void winrt::Winvert4::implementation::MainWindow::SaveFilterButton_Click(winrt::
     // Save or update saved filter (no auto-apply)
     std::wstring name;
     int selIndex = -1;
-    if (auto combo = SavedFiltersComboBox()) selIndex = combo.SelectedIndex();
-    if (selIndex >= 0 && selIndex < static_cast<int>(m_savedFilters.size()))
+    Controls::ComboBox combo{ nullptr };
+    if ((combo = SavedFiltersComboBox())) selIndex = combo.SelectedIndex();
+    // Prefer user-typed text if present (editable ComboBox)
+    if (combo)
+    {
+        try {
+            std::wstring typed = std::wstring(combo.Text());
+            // Trim whitespace
+            auto ltrim = [](std::wstring& s){ s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](wchar_t ch){ return !iswspace(ch); })); };
+            auto rtrim = [](std::wstring& s){ s.erase(std::find_if(s.rbegin(), s.rend(), [](wchar_t ch){ return !iswspace(ch); }).base(), s.end()); };
+            ltrim(typed); rtrim(typed);
+            if (!typed.empty()) name = typed;
+        } catch (...) {}
+    }
+    // If no typed text, fall back to selected item's name
+    if (name.empty() && selIndex >= 0 && selIndex < static_cast<int>(m_savedFilters.size()))
     {
         name = m_savedFilters[selIndex].name;
     }
-    // If built-in (or no selection), generate a new unique name so we don't overwrite defaults
-    bool selectedIsBuiltin = (selIndex >= 0 && m_savedFilters[selIndex].isBuiltin);
-    if (name.empty() || selectedIsBuiltin)
+    // If still empty, generate a new unique name so we don't overwrite defaults
+    if (name.empty())
     {
         std::wstring base = L"Custom ";
         int n = 1;
@@ -2091,6 +2106,34 @@ void winrt::Winvert4::implementation::MainWindow::SaveFilterButton_Click(winrt::
             for (auto& f : m_savedFilters) { if (f.name == candidate) { exists = true; break; } }
             if (!exists) { name = candidate; break; }
             ++n;
+        }
+    }
+
+    
+    // If name matches a built-in preset, append a copy suffix to make it distinct
+    {
+        bool conflictsBuiltin = false;
+        for (auto& f : m_savedFilters) { if (f.name == name && f.isBuiltin) { conflictsBuiltin = true; break; } }
+        if (conflictsBuiltin)
+        {
+            int suffix = 0;
+            while (true)
+            {
+                std::wstring candidate = name;
+                candidate.push_back(L' ');
+                candidate.push_back(L'(');
+                candidate += L"copy";
+                if (suffix > 0)
+                {
+                    candidate.push_back(L' ');
+                    candidate += std::to_wstring(suffix + 1);
+                }
+                candidate.push_back(L')');
+                bool exists = false;
+                for (auto& f : m_savedFilters) { if (f.name == candidate) { exists = true; break; } }
+                if (!exists) { name = candidate; break; }
+                ++suffix;
+            }
         }
     }
 
@@ -2107,10 +2150,11 @@ void winrt::Winvert4::implementation::MainWindow::SaveFilterButton_Click(winrt::
 
     UpdateSavedFiltersCombo();
     UpdateFilterDropdown();
-    if (auto combo = SavedFiltersComboBox())
+    if (auto combo2 = SavedFiltersComboBox())
     {
+        combo2.Text(winrt::hstring{name});
         for (int i = 0; i < static_cast<int>(m_savedFilters.size()); ++i)
-            if (m_savedFilters[i].name == name) { combo.SelectedIndex(i); break; }
+            if (m_savedFilters[i].name == name) { combo2.SelectedIndex(i); break; }
     }
     // Toggle buttons: hide Save, show Apply; enable Delete for custom filters
     if (auto root = this->Content().try_as<FrameworkElement>())

@@ -198,7 +198,7 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <ComboBox x:Name="SavedFiltersComboBox" Grid.Column="0" HorizontalAlignment="Stretch" SelectionChanged="SavedFiltersComboBox_SelectionChanged" IsEditable="True" PlaceholderText="Filter name" KeyDown="EnterKeyCommit_Unfocus"/>
+                                        <ComboBox x:Name="SavedFiltersComboBox" Grid.Column="0" HorizontalAlignment="Stretch" SelectionChanged="SavedFiltersComboBox_SelectionChanged" IsEditable="True" PlaceholderText="Filter name" KeyDown="EnterKeyCommit_Unfocus" KeyUp="EnterKeyCommit_Unfocus"/>
                                     </Grid>
                                     <!-- Editor panel -->
                                     <StackPanel x:Name="FilterEditorPanel" Spacing="5" Visibility="Visible">
