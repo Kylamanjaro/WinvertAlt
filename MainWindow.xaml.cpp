@@ -163,9 +163,10 @@ namespace winrt::Winvert4::implementation
 
             // Grayscale (luma)
             const float M_GRAY[16] = {
-                kDefaultLumaWeights[0], kDefaultLumaWeights[0], kDefaultLumaWeights[0], 0,
-                kDefaultLumaWeights[1], kDefaultLumaWeights[1], kDefaultLumaWeights[1], 0,
-                kDefaultLumaWeights[2], kDefaultLumaWeights[2], kDefaultLumaWeights[2], 0,
+                // Each output channel = dot([wR,wG,wB], [R,G,B,1])
+                kDefaultLumaWeights[0], kDefaultLumaWeights[1], kDefaultLumaWeights[2], 0,
+                kDefaultLumaWeights[0], kDefaultLumaWeights[1], kDefaultLumaWeights[2], 0,
+                kDefaultLumaWeights[0], kDefaultLumaWeights[1], kDefaultLumaWeights[2], 0,
                 0,0,0,1
             };
             add(L"Grayscale", M_GRAY, OFF0);
@@ -2469,6 +2470,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             Controls::CheckBox cb{};
             cb.IsChecked(maps[i].enabled);
             cb.Tag(box_value(i));
+            cb.HorizontalAlignment(HorizontalAlignment::Left);
             cb.VerticalAlignment(VerticalAlignment::Center);
             cb.Checked([this](auto const& s, auto const& e){ ColorMapEnable_Toggled(s, e); });
             cb.Unchecked([this](auto const& s, auto const& e){ ColorMapEnable_Toggled(s, e); });
@@ -2478,7 +2480,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             // Src swatch
             Controls::Button srcBtn{};
             srcBtn.Width(36); srcBtn.Height(36);
-            srcBtn.HorizontalAlignment(HorizontalAlignment::Stretch);
+            srcBtn.HorizontalAlignment(HorizontalAlignment::Left);
             srcBtn.VerticalAlignment(VerticalAlignment::Center);
             srcBtn.Padding(ThicknessHelper::FromUniformLength(0));
             srcBtn.BorderThickness(ThicknessHelper::FromUniformLength(1));
@@ -2496,7 +2498,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             {
                 Controls::Image arrowImg{};
                 arrowImg.Height(32);
-                arrowImg.HorizontalAlignment(HorizontalAlignment::Center);
+                arrowImg.HorizontalAlignment(HorizontalAlignment::Left);
                 arrowImg.VerticalAlignment(VerticalAlignment::Center);
                 Imaging::SvgImageSource svgSrc(Uri(L"ms-appx:///Assets/arrow_right.svg"));
                 arrowImg.Source(svgSrc);
@@ -2507,7 +2509,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             // Dst swatch
             Controls::Button dstBtn{};
             dstBtn.Width(36); dstBtn.Height(36);
-            dstBtn.HorizontalAlignment(HorizontalAlignment::Stretch);
+            dstBtn.HorizontalAlignment(HorizontalAlignment::Left);
             dstBtn.VerticalAlignment(VerticalAlignment::Center);
             dstBtn.Padding(ThicknessHelper::FromUniformLength(0));
             dstBtn.BorderThickness(ThicknessHelper::FromUniformLength(1));
@@ -2529,6 +2531,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             tol.Value(maps[i].tolerance);
             tol.Tag(box_value(i));
             tol.VerticalAlignment(VerticalAlignment::Center);
+            tol.HorizontalAlignment(HorizontalAlignment::Stretch);
             tol.ValueChanged([this](auto const& s, auto const& e){ ColorMapToleranceSlider_ValueChanged(s, e); });
             Controls::Grid::SetColumn(tol, 4);
             rowGrid.Children().Append(tol);
@@ -2538,6 +2541,8 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             rm.Content(box_value(L"Remove"));
             rm.Tag(box_value(i));
             rm.Click([this](auto const& s, auto const& e){ ColorMapRemoveButton_Click(s, e); });
+            rm.HorizontalAlignment(HorizontalAlignment::Left);
+            rm.VerticalAlignment(VerticalAlignment::Center);
             Controls::Grid::SetColumn(rm, 5);
             rowGrid.Children().Append(rm);
 

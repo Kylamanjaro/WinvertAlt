@@ -52,7 +52,7 @@ namespace {
           float4 c = srcTex.Sample(samp0, i.uv);
           float3 result = c.rgb;
           if (enableInvert) { result = 1.0 - result; }
-          if (enableMatrix != 0) { float4 cr = mul(float4(result,1.0), colorMat); result = cr.rgb + colorOffset.rgb; }
+          if (enableMatrix != 0) { float4 cr = mul(colorMat, float4(result,1.0)); result = cr.rgb + colorOffset.rgb; }
           if (enableColorMap != 0 && colorMapCount > 0) {
               float3 rgb = result;
               float maxW = 0.0;
