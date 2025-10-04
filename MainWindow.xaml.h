@@ -79,6 +79,7 @@ namespace winrt::Winvert4::implementation
         void SaturationSlider_ValueChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const&);
         void TemperatureSlider_ValueChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const&);
         void TintSlider_ValueChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const&);
+        void HueSlider_ValueChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const&);
         void SimpleResetButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void SavedFiltersComboBox_SelectionChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
         void EnterKeyCommit_Unfocus(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Input::KeyRoutedEventArgs const&);
@@ -195,6 +196,7 @@ namespace winrt::Winvert4::implementation
         float m_simpleSaturation{ 1.0f };   // [0..2]
         float m_simpleTemperature{ 0.0f };  // [-1..1]
         float m_simpleTint{ 0.0f };         // [-1..1]
+        float m_simpleHueAngle{ 0.0f };     // degrees [-180..180]
 
         void ComposeSimpleMatrix(float (&outMat)[16], float (&outOff)[4]);
         void WriteMatrixToGrid(const float (&mat)[16], const float (&off)[4]);

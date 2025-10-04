@@ -207,6 +207,29 @@ namespace winrt::Winvert4::implementation
             };
             add(L"Night Shift", M_NIGHT, OFF0);
 
+            // Hue Rotate (+30 degrees) based on CSS/SVG hue-rotate matrix
+            // Uses Rec.709/sRGB luma constants (approx 0.213, 0.715, 0.072)
+            {
+                auto addHueRotate = [&](const wchar_t* name, float degrees)
+                {
+                    const float PI = 3.1415926535f;
+                    float rad = degrees * PI / 180.0f;
+                    float c = cosf(rad);
+                    float s = sinf(rad);
+                    const float a = 0.213f; // luma R
+                    const float b = 0.715f; // luma G
+                    const float d = 0.072f; // luma B
+                    float M[16] = {
+                        a + c * (1 - a) + s * (-a),   b + c * (-b) + s * (-b),   d + c * (-d) + s * (1 - d), 0,
+                        a + c * (-a) + s * (0.143f),  b + c * (1 - b) + s * (0.140f), d + c * (-d) + s * (-0.283f), 0,
+                        a + c * (-a) + s * (-0.787f), b + c * (-b) + s * (0.715f),   d + c * (1 - d) + s * (0.072f), 0,
+                        0,0,0,1
+                    };
+                    add(name, M, OFF0);
+                };
+                addHueRotate(L"Hue +180", 180.0f);
+            }
+
             // Refresh UI
             UpdateSavedFiltersCombo();
             UpdateFilterDropdown();
@@ -405,11 +428,13 @@ namespace winrt::Winvert4::implementation
         m_simpleBrightness = 0.0f;
         m_simpleContrast   = 1.0f;
         m_simpleSaturation = 1.0f;
+        m_simpleHueAngle   = 0.0f;
         m_simpleTemperature = 0.0f;
         m_simpleTint = 0.0f;
         if (auto s = BrightnessSlider()) s.Value(m_simpleBrightness);
         if (auto s = ContrastSlider())   s.Value(m_simpleContrast);
         if (auto s = SaturationSlider()) s.Value(m_simpleSaturation);
+        if (auto s = HueSlider())        s.Value(m_simpleHueAngle);
         if (auto s = TemperatureSlider()) s.Value(m_simpleTemperature);
         if (auto s = TintSlider())        s.Value(m_simpleTint);
         m_isUpdatingSimpleUI = false;
@@ -599,6 +624,29 @@ namespace winrt::Winvert4::implementation
         float bScale = 1.0f - 0.15f * t - 0.05f * ti;
         outMat[0] *= rScale; outMat[5] *= gScale; outMat[10] *= bScale;
 
+        // Apply hue rotation (degrees) using Rec.709 luma constants
+        {
+            float deg = m_simpleHueAngle;
+            const float PI = 3.1415926535f;
+            float rad = deg * PI / 180.0f;
+            float cH = cosf(rad);
+            float sH = sinf(rad);
+            const float a = 0.213f; // luma R
+            const float bL = 0.715f; // luma G
+            const float d = 0.072f; // luma B
+            float hue[16] = {0};
+            hue[15] = 1.0f;
+            hue[0] = a + cH * (1 - a) + sH * (-a);     hue[1] = bL + cH * (-bL) + sH * (-bL);   hue[2]  = d + cH * (-d) + sH * (1 - d);
+            hue[4] = a + cH * (-a) + sH * (0.143f);    hue[5] = bL + cH * (1 - bL) + sH * (0.140f); hue[6]  = d + cH * (-d) + sH * (-0.283f);
+            hue[8] = a + cH * (-a) + sH * (-0.787f);   hue[9] = bL + cH * (-bL) + sH * (0.715f);  hue[10] = d + cH * (1 - d) + sH * (0.072f);
+            float tmpH[16] = {0};
+            for (int r = 0; r < 4; ++r)
+                for (int k = 0; k < 4; ++k)
+                    for (int c2 = 0; c2 < 4; ++c2)
+                        tmpH[r*4 + c2] += hue[r*4 + k] * outMat[k*4 + c2];
+            for (int i = 0; i < 16; ++i) outMat[i] = tmpH[i];
+        }
+
         float b = m_simpleBrightness;
         outOff[0] += b; outOff[1] += b; outOff[2] += b;
     }
@@ -760,11 +808,14 @@ namespace winrt::Winvert4::implementation
         m_simpleSaturation = sat;
         m_simpleTemperature = t;
         m_simpleTint = ti;
+        m_simpleHueAngle = 0.0f; // cannot reliably infer hue from arbitrary matrix
 
         if (auto s = BrightnessSlider()) s.Value(m_simpleBrightness);
         if (auto s = ContrastSlider())   s.Value(m_simpleContrast);
         if (auto s = SaturationSlider()) s.Value(m_simpleSaturation);
+        if (auto s = HueSlider())        s.Value(m_simpleHueAngle);
         if (auto s = TemperatureSlider()) s.Value(m_simpleTemperature);
+        if (auto s = HueSlider())        s.Value(m_simpleHueAngle);
         if (auto s = TintSlider())        s.Value(m_simpleTint);
         m_isUpdatingSimpleUI = false;
     }
@@ -806,7 +857,26 @@ namespace winrt::Winvert4::implementation
             }
         }
     }
-    
+
+    void winrt::Winvert4::implementation::MainWindow::HueSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
+    {
+        if (m_isUpdatingSimpleUI) return;
+        m_simpleHueAngle = static_cast<float>(e.NewValue());
+        float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
+        if (m_isPreviewActive)
+        {
+            int idx = SelectedTabIndex();
+            if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
+            {
+                if (static_cast<int>(m_hasPreviewBackup.size()) <= idx) { m_hasPreviewBackup.resize(idx + 1, false); m_previewBackup.resize(idx + 1); }
+                if (!m_hasPreviewBackup[idx]) { m_previewBackup[idx] = m_windowSettings[idx]; m_hasPreviewBackup[idx] = true; }
+                m_windowSettings[idx].isCustomEffectActive = true;
+                memcpy(m_windowSettings[idx].colorMat, m, sizeof(m));
+                memcpy(m_windowSettings[idx].colorOffset, off, sizeof(off));
+                UpdateSettingsForGroup(idx);
+            }
+        }
+    }
     void winrt::Winvert4::implementation::MainWindow::ContrastSlider_ValueChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
     {
         if (m_isUpdatingSimpleUI) return;
@@ -889,12 +959,13 @@ namespace winrt::Winvert4::implementation
 
     void winrt::Winvert4::implementation::MainWindow::SimpleResetButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
-        m_simpleBrightness = 0.0f; m_simpleContrast = 1.0f; m_simpleSaturation = 1.0f; m_simpleTemperature = 0.0f; m_simpleTint = 0.0f;
+        m_simpleBrightness = 0.0f; m_simpleContrast = 1.0f; m_simpleSaturation = 1.0f; m_simpleHueAngle = 0.0f; m_simpleTemperature = 0.0f; m_simpleTint = 0.0f;
         if (auto s = BrightnessSlider()) s.Value(m_simpleBrightness);
         if (auto s = ContrastSlider()) s.Value(m_simpleContrast);
         if (auto s = SaturationSlider()) s.Value(m_simpleSaturation);
+        if (auto s = HueSlider())        s.Value(m_simpleHueAngle);
         if (auto s = TemperatureSlider()) s.Value(m_simpleTemperature);
-        if (auto s = TintSlider()) s.Value(m_simpleTint);
+        if (auto s = TintSlider())        s.Value(m_simpleTint);
         float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
     }
 
@@ -2095,11 +2166,12 @@ void winrt::Winvert4::implementation::MainWindow::ClearFilterButton_Click(winrt:
     m_simpleSaturation = 1.0f;
     m_simpleTemperature = 0.0f;
     m_simpleTint = 0.0f;
-    if (auto s = BrightnessSlider()) s.Value(m_simpleBrightness);
-    if (auto s = ContrastSlider()) s.Value(m_simpleContrast);
-    if (auto s = SaturationSlider()) s.Value(m_simpleSaturation);
-    if (auto s = TemperatureSlider()) s.Value(m_simpleTemperature);
-    if (auto s = TintSlider()) s.Value(m_simpleTint);
+        if (auto s = BrightnessSlider()) s.Value(m_simpleBrightness);
+        if (auto s = ContrastSlider()) s.Value(m_simpleContrast);
+        if (auto s = SaturationSlider()) s.Value(m_simpleSaturation);
+        if (auto s = HueSlider())        s.Value(m_simpleHueAngle);
+        if (auto s = TemperatureSlider()) s.Value(m_simpleTemperature);
+        if (auto s = TintSlider()) s.Value(m_simpleTint);
 }
 
 void winrt::Winvert4::implementation::MainWindow::SavedFiltersComboBox_SelectionChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&)

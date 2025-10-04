@@ -217,6 +217,8 @@
                                                 <Slider x:Name="ContrastSlider" Minimum="0" Maximum="2" StepFrequency="0.01" ValueChanged="ContrastSlider_ValueChanged"/>
                                                 <TextBlock Text="Saturation"/>
                                                 <Slider x:Name="SaturationSlider" Minimum="0" Maximum="2" StepFrequency="0.01" ValueChanged="SaturationSlider_ValueChanged"/>
+                                                <TextBlock Text="Hue (degrees)"/>
+                                                <Slider x:Name="HueSlider" Minimum="-180" Maximum="180" StepFrequency="1" ValueChanged="HueSlider_ValueChanged"/>
                                                 <TextBlock Text="Temperature"/>
                                                 <Slider x:Name="TemperatureSlider" Minimum="-1" Maximum="1" StepFrequency="0.01" ValueChanged="TemperatureSlider_ValueChanged"/>
                                                 <TextBlock Text="Tint"/>
