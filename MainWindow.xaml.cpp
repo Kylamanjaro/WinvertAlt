@@ -2566,6 +2566,8 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
         }
         if (!listPanel) return;
 
+        // Rebuild with UI-update guard to prevent spurious events
+        m_isUpdatingColorMapUI = true;
         listPanel.Children().Clear();
 
         // Add header row inside the scroll list so it aligns with data rows
@@ -2605,6 +2607,21 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
         }
 
         auto& maps = m_globalColorMaps;
+        // Resolve an accent brush for selection highlight (fallback to system blue)
+        Media::Brush accentBrush{ nullptr };
+        {
+            auto app = Application::Current();
+            if (app)
+            {
+                auto res = app.Resources();
+                auto obj = res.TryLookup(box_value(L"AccentStrokeColorDefaultBrush"));
+                accentBrush = obj.try_as<Media::Brush>();
+            }
+            if (!accentBrush)
+            {
+                Media::SolidColorBrush sb; winrt::Windows::UI::Color cc{}; cc.A=255; cc.R=0; cc.G=120; cc.B=215; sb.Color(cc); accentBrush = sb;
+            }
+        }
 
         for (int i = 0; i < static_cast<int>(maps.size()); ++i)
         {
@@ -2641,7 +2658,10 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             srcBtn.HorizontalAlignment(HorizontalAlignment::Center);
             srcBtn.VerticalAlignment(VerticalAlignment::Center);
             srcBtn.Padding(ThicknessHelper::FromUniformLength(0));
-            srcBtn.BorderThickness(ThicknessHelper::FromUniformLength(1));
+            // Highlight if this swatch is the active selection
+            bool isSelSrc = (i == m_selectedColorMapRowIndex) && m_selectedSwatchIsSource;
+            srcBtn.BorderThickness(ThicknessHelper::FromUniformLength(isSelSrc ? 3 : 1));
+            if (isSelSrc && accentBrush) srcBtn.BorderBrush(accentBrush);
             {
                 winrt::Windows::UI::Color c{}; c.A = 255; c.R = maps[i].srcR; c.G = maps[i].srcG; c.B = maps[i].srcB;
                 Media::SolidColorBrush brush; brush.Color(c);
@@ -2670,7 +2690,9 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             dstBtn.HorizontalAlignment(HorizontalAlignment::Center);
             dstBtn.VerticalAlignment(VerticalAlignment::Center);
             dstBtn.Padding(ThicknessHelper::FromUniformLength(0));
-            dstBtn.BorderThickness(ThicknessHelper::FromUniformLength(1));
+            bool isSelDst = (i == m_selectedColorMapRowIndex) && !m_selectedSwatchIsSource;
+            dstBtn.BorderThickness(ThicknessHelper::FromUniformLength(isSelDst ? 3 : 1));
+            if (isSelDst && accentBrush) dstBtn.BorderBrush(accentBrush);
             {
                 winrt::Windows::UI::Color c{}; c.A = 255; c.R = maps[i].dstR; c.G = maps[i].dstG; c.B = maps[i].dstB;
                 Media::SolidColorBrush brush; brush.Color(c);
@@ -2706,6 +2728,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
 
             listPanel.Children().Append(rowGrid);
         }
+        m_isUpdatingColorMapUI = false;
     }
 
 
@@ -2825,6 +2848,8 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             if (root) picker = root.FindName(L"ColorMapPicker").try_as<Controls::ColorPicker>();
         }
         if (picker) { m_isProgrammaticColorPickerChange = true; picker.Color(c); m_isProgrammaticColorPickerChange = false; }
+        // Update highlight to indicate selection
+        RefreshColorMapList();
     }
 
     void winrt::Winvert4::implementation::MainWindow::ColorMapDestSwatch_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -2840,6 +2865,8 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             if (root) picker = root.FindName(L"ColorMapPicker").try_as<Controls::ColorPicker>();
         }
         if (picker) { m_isProgrammaticColorPickerChange = true; picker.Color(c); m_isProgrammaticColorPickerChange = false; }
+        // Update highlight to indicate selection
+        RefreshColorMapList();
     }
 
     void winrt::Winvert4::implementation::MainWindow::ColorMapPicker_ColorChanged(Controls::ColorPicker const&, Controls::ColorChangedEventArgs const& args)
@@ -2864,24 +2891,48 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             Controls::StackPanel listPanel{ nullptr };
             if (auto root = this->Content().try_as<FrameworkElement>())
                 listPanel = root.FindName(L"ColorMapListPanel").try_as<Controls::StackPanel>();
-            if (listPanel && row >= 0 && row < static_cast<int>(listPanel.Children().Size()))
+            if (listPanel)
             {
-                auto rowGrid = listPanel.Children().GetAt(row).try_as<Controls::Grid>();
-                if (rowGrid)
+                uint32_t size = listPanel.Children().Size();
+                // Account for header row if present (header + rows)
+                uint32_t baseIndex = (size == maps.size() + 1) ? 1u : 0u;
+                uint32_t childIndex = baseIndex + static_cast<uint32_t>(row);
+                if (childIndex < size)
                 {
-                    int targetCol = m_selectedSwatchIsSource ? 1 : 3;
-                    for (auto child : rowGrid.Children())
+                    auto rowGrid = listPanel.Children().GetAt(childIndex).try_as<Controls::Grid>();
+                    if (rowGrid)
                     {
-                        auto btn = child.try_as<Controls::Button>();
-                        if (!btn) continue;
-                        int col = Controls::Grid::GetColumn(btn);
-                        if (col == targetCol)
+                        int targetCol = m_selectedSwatchIsSource ? 1 : 3;
+                        for (auto child : rowGrid.Children())
                         {
-                            Media::SolidColorBrush brush;
-                            winrt::Windows::UI::Color cc{}; cc.A = 255; cc.R = c.R; cc.G = c.G; cc.B = c.B;
-                            brush.Color(cc);
-                            btn.Background(brush);
-                            break;
+                            auto btn = child.try_as<Controls::Button>();
+                            if (!btn) continue;
+                            int col = Controls::Grid::GetColumn(btn);
+                            if (col == targetCol)
+                            {
+                                Media::SolidColorBrush brush;
+                                winrt::Windows::UI::Color cc{}; cc.A = 255; cc.R = c.R; cc.G = c.G; cc.B = c.B;
+                                brush.Color(cc);
+                                btn.Background(brush);
+                                // Emphasize selected swatch border after change with accent color
+                                btn.BorderThickness(ThicknessHelper::FromUniformLength(3));
+                                {
+                                    Media::Brush accentBrush{ nullptr };
+                                    auto app2 = Application::Current();
+                                    if (app2)
+                                    {
+                                        auto res2 = app2.Resources();
+                                        auto obj2 = res2.TryLookup(box_value(L"AccentStrokeColorDefaultBrush"));
+                                        accentBrush = obj2.try_as<Media::Brush>();
+                                    }
+                                    if (!accentBrush)
+                                    {
+                                        Media::SolidColorBrush sb2; winrt::Windows::UI::Color ac{}; ac.A=255; ac.R=0; ac.G=120; ac.B=215; sb2.Color(ac); accentBrush = sb2;
+                                    }
+                                    btn.BorderBrush(accentBrush);
+                                }
+                                break;
+                            }
                         }
                     }
                 }
