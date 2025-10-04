@@ -2452,6 +2452,42 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
 
         listPanel.Children().Clear();
 
+        // Add header row inside the scroll list so it aligns with data rows
+        {
+            Controls::Grid header{};
+            header.ColumnSpacing(8);
+            auto cols = header.ColumnDefinitions();
+            cols.Append(Controls::ColumnDefinition());
+            cols.Append(Controls::ColumnDefinition());
+            cols.Append(Controls::ColumnDefinition());
+            cols.Append(Controls::ColumnDefinition());
+            cols.Append(Controls::ColumnDefinition());
+            cols.Append(Controls::ColumnDefinition());
+
+            auto makeHeader = [](const wchar_t* text) {
+                Controls::TextBlock tb{}; tb.Text(text); tb.Opacity(0.7); tb.HorizontalAlignment(HorizontalAlignment::Center); return tb; };
+            {
+                auto tb = makeHeader(L"Enable"); Controls::Grid::SetColumn(tb, 0); header.Children().Append(tb); 
+            }
+            {
+                auto tb = makeHeader(L"From"); Controls::Grid::SetColumn(tb, 1); header.Children().Append(tb);
+            }
+            {
+                //auto tb = makeHeader(L"\x2192"); Controls::Grid::SetColumn(tb, 2); header.Children().Append(tb);
+                auto tb = makeHeader(L""); Controls::Grid::SetColumn(tb, 2); header.Children().Append(tb);
+            }
+            {
+                auto tb = makeHeader(L"To"); Controls::Grid::SetColumn(tb, 3); header.Children().Append(tb);
+            }
+            {
+                auto tb = makeHeader(L"Tolerance"); Controls::Grid::SetColumn(tb, 4); header.Children().Append(tb);
+            }
+            {
+                auto tb = makeHeader(L""); Controls::Grid::SetColumn(tb, 4); header.Children().Append(tb);
+            }
+            listPanel.Children().Append(header);
+        }
+
         auto& maps = m_globalColorMaps;
 
         for (int i = 0; i < static_cast<int>(maps.size()); ++i)
@@ -2470,7 +2506,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             Controls::CheckBox cb{};
             cb.IsChecked(maps[i].enabled);
             cb.Tag(box_value(i));
-            cb.HorizontalAlignment(HorizontalAlignment::Left);
+            cb.HorizontalAlignment(HorizontalAlignment::Center);
             cb.VerticalAlignment(VerticalAlignment::Center);
             cb.Checked([this](auto const& s, auto const& e){ ColorMapEnable_Toggled(s, e); });
             cb.Unchecked([this](auto const& s, auto const& e){ ColorMapEnable_Toggled(s, e); });
@@ -2480,7 +2516,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             // Src swatch
             Controls::Button srcBtn{};
             srcBtn.Width(36); srcBtn.Height(36);
-            srcBtn.HorizontalAlignment(HorizontalAlignment::Left);
+            srcBtn.HorizontalAlignment(HorizontalAlignment::Center);
             srcBtn.VerticalAlignment(VerticalAlignment::Center);
             srcBtn.Padding(ThicknessHelper::FromUniformLength(0));
             srcBtn.BorderThickness(ThicknessHelper::FromUniformLength(1));
@@ -2498,7 +2534,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             {
                 Controls::Image arrowImg{};
                 arrowImg.Height(32);
-                arrowImg.HorizontalAlignment(HorizontalAlignment::Left);
+                arrowImg.HorizontalAlignment(HorizontalAlignment::Center);
                 arrowImg.VerticalAlignment(VerticalAlignment::Center);
                 Imaging::SvgImageSource svgSrc(Uri(L"ms-appx:///Assets/arrow_right.svg"));
                 arrowImg.Source(svgSrc);
@@ -2509,7 +2545,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             // Dst swatch
             Controls::Button dstBtn{};
             dstBtn.Width(36); dstBtn.Height(36);
-            dstBtn.HorizontalAlignment(HorizontalAlignment::Left);
+            dstBtn.HorizontalAlignment(HorizontalAlignment::Center);
             dstBtn.VerticalAlignment(VerticalAlignment::Center);
             dstBtn.Padding(ThicknessHelper::FromUniformLength(0));
             dstBtn.BorderThickness(ThicknessHelper::FromUniformLength(1));
@@ -2541,7 +2577,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             rm.Content(box_value(L"Remove"));
             rm.Tag(box_value(i));
             rm.Click([this](auto const& s, auto const& e){ ColorMapRemoveButton_Click(s, e); });
-            rm.HorizontalAlignment(HorizontalAlignment::Left);
+            rm.HorizontalAlignment(HorizontalAlignment::Center);
             rm.VerticalAlignment(VerticalAlignment::Center);
             Controls::Grid::SetColumn(rm, 5);
             rowGrid.Children().Append(rm);

@@ -279,27 +279,18 @@
                                 <Grid ColumnSpacing="16" Padding="8,4,0,8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="300"/>
+                                        <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="*"/>
-                                        <RowDefinition Height="*"/>
-                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
-                                    <TextBlock Grid.Column="0" Grid.Row="0" Grid.ColumnSpan="5" Text="Define color replacements" HorizontalAlignment="Center"/>
-                                    <TextBlock Grid.Column="5" Grid.Row="0" Grid.ColumnSpan="1" Text="Color picker"/>
+                                    <TextBlock Grid.Column="0" Grid.Row="0" Text="Define color replacements" HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" Grid.Row="0" Text="Color picker"/>
 
-                                    <TextBlock Grid.Column="0" Grid.Row="1" Text="On"        HorizontalAlignment="Left" Opacity="0.7"/>
-                                    <TextBlock Grid.Column="1" Grid.Row="1" Text="From"      HorizontalAlignment="Left" Opacity="0.7"/>
-                                    <TextBlock Grid.Column="2" Grid.Row="1" Text="→"         HorizontalAlignment="Left" Opacity="0.7"/>
-                                    <TextBlock Grid.Column="3" Grid.Row="1" Text="To"        HorizontalAlignment="Left" Opacity="0.7"/>
-                                    <TextBlock Grid.Column="4" Grid.Row="1" Text="Tolerance" HorizontalAlignment="Left" Opacity="0.7"/>
+                                    <!-- Header moved into the first row inside the scroll list for alignment -->
 
-                                    <ScrollViewer Grid.Column="0" Grid.Row="2" Grid.ColumnSpan="5" x:Name="ColorMapListScroll" VerticalScrollBarVisibility="Auto" Height="Auto" MaxHeight="460">
+                                    <ScrollViewer Grid.Column="0" Grid.Row="1" x:Name="ColorMapListScroll" VerticalScrollBarVisibility="Auto" Height="Auto" MaxHeight="460">
                                         <StackPanel x:Name="ColorMapListPanel" Spacing="6"/>
                                     </ScrollViewer>
                                     <!-- Left: mapping list -->
@@ -329,7 +320,7 @@
                                     </StackPanel> -->
 
                                     <!-- Right: shared color picker for swatches -->
-                                    <StackPanel Grid.Column="5" Grid.Row="2" Spacing="8">
+                                    <StackPanel Grid.Column="1" Grid.Row="1" Spacing="8">
                                         <ColorPicker x:Name="ColorMapPicker" ColorSpectrumShape="Ring" IsAlphaEnabled="False" ColorChanged="ColorMapPicker_ColorChanged"/>
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <Button x:Name="ColorMapAddButton" Content="Add" Click="ColorMapAddButton_Click"/>
