@@ -15,6 +15,7 @@ public:
     void RemoveSubscriber(ISubscriber* sub);
     void RequestRedraw();
     const RECT& GetOutputRect() const { return m_outputRect; }
+    float GetOutputHz() const { return m_outputHz; }
     ID3D11Device* GetDevice() { return m_device.Get(); }
 
 private:
@@ -24,6 +25,7 @@ private:
     std::atomic<bool> m_isRunning = false;
 
     RECT m_outputRect{};
+    float m_outputHz{ 0.0f };
     ::Microsoft::WRL::ComPtr<ID3D11Device> m_device;
     ::Microsoft::WRL::ComPtr<ID3D11DeviceContext> m_context;
     ::Microsoft::WRL::ComPtr<IDXGIOutput1> m_output;

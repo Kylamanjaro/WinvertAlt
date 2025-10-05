@@ -706,12 +706,19 @@ void EffectWindow::Render(ID3D11Texture2D* frame, unsigned long long lastPresent
                     m_d2dCtx->BeginDraw();
 
                     const float w = static_cast<float>(m_desktopRect.right - m_desktopRect.left);
-                    // Two-line compact overlay: source Hz and our processing time
+                    // Two-line compact overlay: clamped draw Hz vs source Hz, and draw time
                     D2D1_RECT_F rect1 = D2D1::RectF(w - 140.f, 4.f,  w - 6.f, 24.f);
                     D2D1_RECT_F rect2 = D2D1::RectF(w - 140.f, 24.f, w - 6.f, 44.f);
 
-                    wchar_t line1[64]; swprintf_s(line1, L"Src %.0f Hz", m_fps);
-                    wchar_t line2[64]; swprintf_s(line2, L"Draw %.1f ms (%.0f)", m_gpuMsLast, m_procFps);
+                    // Clamp draw frequency to monitor/source frequency to avoid meaningless high Hz when draw<vsync
+                    // Prefer static monitor refresh from duplication thread; fall back to computed fps
+                    float srcHz = m_thread ? m_thread->GetOutputHz() : 0.0f;
+                    if (srcHz <= 0.0f) srcHz = m_fps;
+                    float drawHz = m_procFps;
+                    if (srcHz > 0.0f && drawHz > srcHz) drawHz = srcHz;
+
+                    wchar_t line1[64]; swprintf_s(line1, L"%.0f/%.0f Hz", drawHz, srcHz);
+                    wchar_t line2[64]; swprintf_s(line2, L"Draw %.2f ms", m_gpuMsLast);
                     m_d2dCtx->DrawTextW(line1, (UINT32)wcslen(line1), m_textFormat.Get(), rect1, m_textBrush.Get());
                     m_d2dCtx->DrawTextW(line2, (UINT32)wcslen(line2), m_textFormat.Get(), rect2, m_textBrush.Get());
 

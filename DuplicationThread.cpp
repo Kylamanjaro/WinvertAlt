@@ -218,6 +218,24 @@ void DuplicationThread::ThreadProc()
     m_duplication->GetDesc(&dd);
     winvert4::Logf("DT: desc: Mode=%ux%u fmt=%u Rot=%u",
         dd.ModeDesc.Width, dd.ModeDesc.Height, dd.ModeDesc.Format, dd.Rotation);
+    // Cache monitor refresh rate if available
+    if (dd.ModeDesc.RefreshRate.Denominator != 0)
+    {
+        m_outputHz = static_cast<float>(double(dd.ModeDesc.RefreshRate.Numerator) / double(dd.ModeDesc.RefreshRate.Denominator));
+        // Snap to common rates
+        if (m_outputHz > 23.9f && m_outputHz < 24.1f) m_outputHz = 24.0f;
+        else if (m_outputHz > 29.9f && m_outputHz < 30.1f) m_outputHz = 30.0f;
+        else if (m_outputHz > 47.9f && m_outputHz < 48.1f) m_outputHz = 48.0f;
+        else if (m_outputHz > 59.0f && m_outputHz < 60.5f) m_outputHz = 60.0f;
+        else if (m_outputHz > 71.0f && m_outputHz < 72.5f) m_outputHz = 72.0f;
+        else if (m_outputHz > 119.0f && m_outputHz < 121.0f) m_outputHz = 120.0f;
+        else if (m_outputHz > 143.0f && m_outputHz < 145.0f) m_outputHz = 144.0f;
+        else if (m_outputHz > 159.0f && m_outputHz < 161.0f) m_outputHz = 160.0f;
+    }
+    else if (m_outputHz <= 0.0f)
+    {
+        m_outputHz = 60.0f; // sensible default
+    }
 
     // Create full-frame texture to copy into
     D3D11_TEXTURE2D_DESC texDesc{};
