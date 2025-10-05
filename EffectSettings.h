@@ -42,6 +42,8 @@ struct EffectSettings
 
     // Color mapping toggle per window (mapping list is global in MainWindow)
     bool isColorMappingEnabled = false;
+    // When mapping, preserve original brightness (luminance) when steering colors
+    bool colorMapPreserveBrightness = true;
 
     // Snapshot of color maps to apply (copied from MainWindow's global list when applied)
     std::vector<ColorMapEntry> colorMaps;

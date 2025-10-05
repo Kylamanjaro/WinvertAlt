@@ -329,6 +329,7 @@
                                             <Button x:Name="ColorMapSampleButton" Content="Sample" Click="ColorMapSampleButton_Click"/>
                                             <ToggleButton x:Name="PreviewColorMapToggle" Content="Preview" Checked="PreviewColorMapToggle_Checked" Unchecked="PreviewColorMapToggle_Unchecked"/>
                                         </StackPanel>
+                                        <ToggleSwitch x:Name="ColorMapPreserveToggle" Header="Preserve brightness" IsOn="True" Toggled="ColorMapPreserveToggle_Toggled"/>
                                     </StackPanel>
                                 </Grid>
                             </Expander>

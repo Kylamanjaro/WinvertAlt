@@ -62,7 +62,7 @@ private:
         uint32_t enableInvert;
         uint32_t enableMatrix;
         uint32_t enableColorMap;
-        float _pad1; // Padding to align enables to 16 bytes
+        uint32_t preserveMapBrightness; // 1 = preserve original luminance when mapping
         float lumaWeights[3];
         float _pad2; // Padding to align colorMat to 16 bytes
         float colorMat[16];

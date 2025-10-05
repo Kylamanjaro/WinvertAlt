@@ -1529,6 +1529,13 @@ namespace winrt::Winvert4::implementation
         {
             SetWindowSize(360, showEmptyPrompt ? 240 : 120);
         }
+
+        // Sync Color Map preserve toggle with current settings if present
+        if (auto root = this->Content().try_as<FrameworkElement>())
+        {
+            auto ts = root.FindName(L"ColorMapPreserveToggle").try_as<Controls::ToggleSwitch>();
+            if (ts) ts.IsOn(current.colorMapPreserveBrightness);
+        }
     }
 
     void winrt::Winvert4::implementation::MainWindow::SetWindowSize(int width, int height)
@@ -3033,6 +3040,23 @@ void winrt::Winvert4::implementation::MainWindow::PreviewColorMapButton_Click(wi
         }
     }
 
+    void winrt::Winvert4::implementation::MainWindow::ColorMapPreserveToggle_Toggled(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        int idx = SelectedTabIndex();
+        if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
+        Controls::ToggleSwitch toggle{ nullptr };
+        if (auto root = this->Content().try_as<FrameworkElement>())
+        {
+            toggle = root.FindName(L"ColorMapPreserveToggle").try_as<Controls::ToggleSwitch>();
+        }
+        if (!toggle) return;
+        m_windowSettings[idx].colorMapPreserveBrightness = toggle.IsOn();
+        if (m_windowSettings[idx].isColorMappingEnabled)
+        {
+            ApplyGlobalColorMapsToSettings(m_windowSettings[idx]);
+            UpdateSettingsForGroup(idx);
+        }
+    }
 
 
 

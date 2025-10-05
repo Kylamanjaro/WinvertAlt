@@ -32,7 +32,7 @@ namespace {
             uint enableInvert;
             uint enableMatrix;
             uint enableColorMap;
-            float _pad1; // Padding for alignment
+            uint preserveMapBrightness; // 1 = preserve original luminance when mapping
             float3 lumaWeights;
             float _pad2; // Padding for alignment
             row_major float4x4 colorMat;
@@ -64,24 +64,30 @@ namespace {
                   float3 d = rgb - src;
                   float dist2 = dot(d,d);
                   if (dist2 <= t2 && t2 > 1e-12) {
-                      // Softly steer nearby colors toward the destination color, preserving original luminance
+                      // Softly steer nearby colors toward the destination color
                       float3 dst = colorMapDst[i].xyz;
                       float3 mapped;
-                      float lDst = Luma(dst); // Luminance of destination
-                      if (lDst < 1e-5 || lDst > 0.999) {
-                          // Destination is black/white. Don't preserve luminance, just use the color directly.
-                          // The luma-preservation math doesn't work well at extremes.
-                          mapped = dst;
+                      if (preserveMapBrightness != 0) {
+                          float lDst = Luma(dst); // Luminance of destination
+                          if (lDst < 1e-5 || lDst > 0.999) {
+                              // Destination is black/white. Don't preserve luminance, just use the color directly.
+                              mapped = dst;
+                          } else {
+                              // Preserve luminance with a highlight roll-off to avoid clipping near white
+                              float lOrig = Luma(rgb);
+                              float scale = lOrig / max(lDst, 1e-5);
+                              float highlight = smoothstep(0.85, 1.0, lOrig);
+                              scale = lerp(scale, 1.0, highlight);
+                              mapped = dst * scale;
+                          }
                       } else {
-                          // Preserve original luminance by scaling the destination color.
-                          // This maintains the hue of the destination but brightness of the source.
-                          float lOrig = Luma(rgb);
-                          mapped = dst * (lOrig / lDst);
+                          // Disabled: do not preserve brightness; use destination color as-is
+                          mapped = dst;
                       }
                       // Blend weight with quadratic falloff without sqrt for performance
                       float w = saturate(1.0 - dist2 / t2);
-                      // Slightly sharpen the falloff
-                      w = w * w;
+                      // Slightly stronger falloff to pull mapping more decisively
+                      w = w * w * w; // cubic
                       if (w > maxW) { maxW = w; best = lerp(rgb, saturate(mapped), w); }
                   }
               }
@@ -229,8 +235,8 @@ void EffectWindow::EnsureSRVLocked_(ID3D11Texture2D* currentTex)
     }
 }
 
-void EffectWindow::UpdateCBs_()
-{
+    void EffectWindow::UpdateCBs_()
+    {
     RECT outRect = m_thread->GetOutputRect();
     const float outW = float(outRect.right - outRect.left);
     const float outH = float(outRect.bottom - outRect.top);
@@ -249,12 +255,13 @@ void EffectWindow::UpdateCBs_()
     m_deferredCtx->UpdateSubresource(m_cb.Get(), 0, nullptr, &vcb, 0, 0);
 
     // Update Pixel Shader CB
-    PixelCB pcb{};
-    bool inv = m_settings.isBrightnessProtectionEnabled ? m_effectiveInvert : m_settings.isInvertEffectEnabled;
-    pcb.enableInvert     = inv ? 1u : 0u;
-    pcb.enableMatrix     = m_settings.isCustomEffectActive ? 1u : 0u;
-    pcb.enableColorMap   = (m_settings.isColorMappingEnabled && !m_settings.colorMaps.empty()) ? 1u : 0u;
-    memcpy(pcb.lumaWeights, m_settings.lumaWeights, sizeof(pcb.lumaWeights));
+        PixelCB pcb{};
+        bool inv = m_settings.isBrightnessProtectionEnabled ? m_effectiveInvert : m_settings.isInvertEffectEnabled;
+        pcb.enableInvert     = inv ? 1u : 0u;
+        pcb.enableMatrix     = m_settings.isCustomEffectActive ? 1u : 0u;
+        pcb.enableColorMap   = (m_settings.isColorMappingEnabled && !m_settings.colorMaps.empty()) ? 1u : 0u;
+        pcb.preserveMapBrightness = (m_settings.isColorMappingEnabled && m_settings.colorMapPreserveBrightness) ? 1u : 0u;
+        memcpy(pcb.lumaWeights, m_settings.lumaWeights, sizeof(pcb.lumaWeights));
     if (m_settings.isCustomEffectActive)
     {
         memcpy(pcb.colorMat,    m_settings.colorMat,    sizeof(pcb.colorMat));
