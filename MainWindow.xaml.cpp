@@ -512,7 +512,7 @@ namespace winrt::Winvert4::implementation
         // Fixed control panel size based on whether any windows exist
         {
             bool hasWindows = RegionsTabView().TabItems().Size() > 0;
-            SetWindowSize(360, hasWindows ? 120 : 240);
+            SetWindowSize(360, 120);
         }
 
         // Reapply composite filters for all tabs (in case matrices were edited)
@@ -1044,7 +1044,69 @@ namespace winrt::Winvert4::implementation
         // Mark hotkey-triggered removal so we can close app if it was the last window
         m_lastRemovalInitiatedByHotkey = true;
         m_lastRemovalViaUI = false;
-        // TODO: RequestRemoveLastEffectWindow
+        // Remove the most recent (last) region window
+        auto items = RegionsTabView().TabItems();
+        if (items.Size() == 0) return;
+        int idx = static_cast<int>(items.Size()) - 1;
+
+        // Release effect window resources
+        if (idx < static_cast<int>(m_effectWindows.size()))
+        {
+            if (auto& wnd = m_effectWindows[idx])
+            {
+                wnd->Hide();
+                wnd.reset();
+            }
+            m_effectWindows.erase(m_effectWindows.begin() + idx);
+        }
+        if (idx < static_cast<int>(m_effectWindowExtras.size()))
+        {
+            auto& extras = m_effectWindowExtras[idx];
+            for (auto& ew : extras)
+            {
+                if (ew) { ew->Hide(); ew.reset(); }
+            }
+            m_effectWindowExtras.erase(m_effectWindowExtras.begin() + idx);
+        }
+        if (idx < static_cast<int>(m_windowSettings.size()))
+        {
+            m_windowSettings.erase(m_windowSettings.begin() + idx);
+        }
+        if (idx < static_cast<int>(m_windowHidden.size()))
+        {
+            m_windowHidden.erase(m_windowHidden.begin() + idx);
+        }
+        if (idx < static_cast<int>(m_hasPreviewBackup.size()))
+        {
+            m_hasPreviewBackup.erase(m_hasPreviewBackup.begin() + idx);
+        }
+        if (idx < static_cast<int>(m_previewBackup.size()))
+        {
+            m_previewBackup.erase(m_previewBackup.begin() + idx);
+        }
+
+        // Remove tab and renumber headers
+        items.RemoveAt(static_cast<uint32_t>(idx));
+        for (uint32_t i = 0; i < items.Size(); ++i)
+        {
+            if (auto tab = items.GetAt(i).try_as<TabViewItem>())
+            {
+                tab.Header(box_value(L"Region " + std::to_wstring(i + 1)));
+            }
+        }
+        // Adjust selection or close app if no windows remain
+        if (items.Size() > 0)
+        {
+            RegionsTabView().SelectedIndex(static_cast<int>(items.Size()) - 1);
+            UpdateUIState();
+            // Load persisted color maps
+            LoadGlobalColorMaps();
+        }
+        else
+        {
+            // No regions left: close the app when removal was via hotkey
+            ::PostMessage(m_mainHwnd, WM_CLOSE, 0, 0);
+        }
     }
 
     void winrt::Winvert4::implementation::MainWindow::OnFilterHotkeyPressed()
