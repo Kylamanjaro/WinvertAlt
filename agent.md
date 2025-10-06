@@ -86,5 +86,13 @@ By adopting **Desktop Duplication** and **GPU shaders**:
 ---
 
 ## Next Steps (template)
-Fix the filter button. On the hotkey "win+shift+f" the favorite filter should be applied to the selected region of the screen.
+Add saving feature for settings:
+  * Selection Border Color
+  * Brightness Protection Delay
+  * Brightness Protection luminance weights
+  * FPS toggle
+  * Hotkeys
+  * Custom Filters
+  * Color mappings
+  * Color mapping preserve brightness toggle
 

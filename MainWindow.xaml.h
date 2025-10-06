@@ -58,13 +58,9 @@ namespace winrt::Winvert4::implementation
         void PreviewFilterToggle_Unchecked(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
 
         void RefreshColorMapList();
-        void SaveGlobalColorMaps();
-        void LoadGlobalColorMaps();
-        // Consolidated app state persistence
+        // Unified app state persistence to a single blob file
         void SaveAppState();
         void LoadAppState();
-        void SaveSavedFilters();
-        void LoadSavedFilters();
 
         // --- Tab and Flyout Handlers ---
         void InfoBar_Closed(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::InfoBarClosedEventArgs const&);
@@ -252,6 +248,7 @@ namespace winrt::Winvert4::implementation
         bool m_isUpdatingColorMapUI{ false };
         bool m_isUpdatingSimpleUI{ false };
         bool m_isClosing{ false };
+        bool m_isSavingEnabled{ false };
 
         // --- Sampling overlay (magnifier) ---
         static LRESULT CALLBACK SampleOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);

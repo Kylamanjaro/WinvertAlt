@@ -12,6 +12,10 @@
 #include <microsoft.ui.xaml.window.h>
 #include <algorithm>
 #include <cwctype>
+#include <fstream>
+#include <sstream>
+#include <locale>
+#include <iomanip>
 
 #if __has_include("MainWindow.g.cpp")
 #include "MainWindow.g.cpp"
@@ -233,10 +237,10 @@ namespace winrt::Winvert4::implementation
                 addHueRotate(L"Hue +180", 180.0f);
             }
 
-            // Load consolidated app state (filters, color maps, overlay, favorite)
-            LoadAppState();
-            UpdateSavedFiltersCombo();
-            UpdateFilterDropdown();
+        // Load app state from blob file, then init saved filters UI
+        LoadAppState();
+        UpdateSavedFiltersCombo();
+        UpdateFilterDropdown();
         }
 
         // Hide the control panel until the first selection creates a window.
@@ -244,8 +248,7 @@ namespace winrt::Winvert4::implementation
         ::ShowWindow(m_mainHwnd, SW_HIDE);
 
         UpdateUIState();
-        // Load persisted color maps (only if not provided by consolidated app state)
-        if (m_globalColorMaps.empty()) LoadGlobalColorMaps();
+        // Color maps are session-scoped until persistence is reintroduced
         UpdateAllHotkeyText();
         SetWindowSize(360, 120); // Prepare initial size, but keep window hidden
 
@@ -264,6 +267,7 @@ namespace winrt::Winvert4::implementation
         }
 
         m_isAppInitialized = true;
+        m_isSavingEnabled = true; // enable persistence after initial UI wiring
 
         // Do not start selection automatically. The global hotkey will start
         // the operation (similar to Snipping Tool) after app launch.
@@ -295,8 +299,6 @@ namespace winrt::Winvert4::implementation
         auto& s = m_windowSettings[idx];
         s.isBrightnessProtectionEnabled = !s.isBrightnessProtectionEnabled;
         UpdateUIState();
-        // Load persisted color maps
-        LoadGlobalColorMaps();
         // Push to all effect windows in the group immediately
         ApplyGlobalColorMapsToSettings(s);
         UpdateSettingsForGroup(idx, s);
@@ -309,8 +311,6 @@ namespace winrt::Winvert4::implementation
         auto& s = m_windowSettings[idx];
         s.isInvertEffectEnabled = !s.isInvertEffectEnabled;
         UpdateUIState();
-        // Load persisted color maps
-        LoadGlobalColorMaps();
         ApplyGlobalColorMapsToSettings(s);
         UpdateSettingsForGroup(idx, s);
     }
@@ -378,8 +378,6 @@ namespace winrt::Winvert4::implementation
             RegionsTabView().SelectedIndex(static_cast<int>(std::min<uint32_t>(items.Size() - 1, static_cast<uint32_t>(idx))));
         }
         UpdateUIState();
-        // Load persisted color maps
-        LoadGlobalColorMaps();
     }
 
     void winrt::Winvert4::implementation::MainWindow::HideAllWindows_Click(IInspectable const&, RoutedEventArgs const&)
@@ -391,8 +389,6 @@ namespace winrt::Winvert4::implementation
         m_windowHidden[idx] = !m_windowHidden[idx];
         SetHiddenForGroup(idx, m_windowHidden[idx]);
         UpdateUIState();
-        // Load persisted color maps
-        LoadGlobalColorMaps();
     }
 
     void winrt::Winvert4::implementation::MainWindow::SettingsButton_Click(IInspectable const&, RoutedEventArgs const&)
@@ -403,8 +399,6 @@ namespace winrt::Winvert4::implementation
             m_areWindowsHidden = true;
             SetHiddenForAll(true);
             UpdateUIState();
-        // Load persisted color maps
-        LoadGlobalColorMaps();
         }
 
         RootPanel().Visibility(Visibility::Collapsed);
@@ -460,7 +454,6 @@ namespace winrt::Winvert4::implementation
             }
         }
         RefreshColorMapList();
-        SaveGlobalColorMaps();
     }
 
     void winrt::Winvert4::implementation::MainWindow::BackButton_Click(IInspectable const&, RoutedEventArgs const&)
@@ -984,7 +977,6 @@ namespace winrt::Winvert4::implementation
             m_windowSettings[i].showFpsOverlay = m_showFpsOverlay;
             UpdateSettingsForGroup(static_cast<int>(i));
         }
-        // Persist app state
         SaveAppState();
     }
 
@@ -1022,6 +1014,7 @@ namespace winrt::Winvert4::implementation
     {
         auto newColor = args.NewColor();
         m_selectionColor = RGB(newColor.R, newColor.G, newColor.B);
+        SaveAppState();
     }
 
     // --- Core Logic ---
@@ -1103,8 +1096,6 @@ namespace winrt::Winvert4::implementation
         {
             RegionsTabView().SelectedIndex(static_cast<int>(items.Size()) - 1);
             UpdateUIState();
-            // Load persisted color maps
-            LoadGlobalColorMaps();
         }
         else
         {
@@ -1342,8 +1333,7 @@ namespace winrt::Winvert4::implementation
             winvert4::Log("MainWindow: ShowWindow(SW_SHOW) control panel");
             m_controlPanelShownYet = true;
             UpdateUIState();
-        // Load persisted color maps
-        LoadGlobalColorMaps();
+        
             SetWindowSize(360, 120);
         }
     }
@@ -1772,7 +1762,7 @@ namespace winrt::Winvert4::implementation
         }
         m_globalColorMaps.push_back(e);
         RefreshColorMapList();
-        SaveGlobalColorMaps();
+        
         int idxSel = SelectedTabIndex();
         if (idxSel >= 0 && idxSel < static_cast<int>(m_windowSettings.size()))
         {
@@ -1977,18 +1967,14 @@ namespace winrt::Winvert4::implementation
                 RegionsTabView().SelectedIndex(static_cast<int>(std::min<uint32_t>(items.Size() - 1, index)));
             }
             UpdateUIState();
-        // Load persisted color maps
-        LoadGlobalColorMaps();
         }
     }
 
     void winrt::Winvert4::implementation::MainWindow::RegionsTabView_SelectionChanged(IInspectable const&, Controls::SelectionChangedEventArgs const&)
     {
         UpdateUIState();
-        // Load persisted color maps
-        LoadGlobalColorMaps();
         RefreshColorMapList();
-        SaveGlobalColorMaps();
+        
     }
 
     LRESULT CALLBACK MainWindow::WindowSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
@@ -2032,6 +2018,7 @@ namespace winrt::Winvert4::implementation
                     pThis->RebindInvertHotkeyButton().IsEnabled(true);
                     pThis->RebindFilterHotkeyButton().IsEnabled(true);
                     pThis->RebindRemoveHotkeyButton().IsEnabled(true);
+                    pThis->SaveAppState();
                     return 0;
                 }
                 return DefSubclassProc(hWnd, uMsg, wParam, lParam);
@@ -2053,7 +2040,7 @@ namespace winrt::Winvert4::implementation
             break;
         }
         case WM_CLOSE:
-            // Persist state before teardown; avoid early-return guards during closing
+            // Save state and teardown
             pThis->SaveAppState();
             pThis->m_isClosing = true;
             break;
@@ -2230,14 +2217,14 @@ void winrt::Winvert4::implementation::MainWindow::AddNewFilterButton_Click(winrt
 
     UpdateSavedFiltersCombo();
     UpdateFilterDropdown();
+    SaveAppState();
     if (auto combo2 = SavedFiltersComboBox())
     {
         combo2.Text(winrt::hstring{name});
         for (int i = 0; i < static_cast<int>(m_savedFilters.size()); ++i)
             if (m_savedFilters[i].name == name) { combo2.SelectedIndex(i); break; }
     }
-    SaveSavedFilters();
-    SaveAppState();
+    
     // Toggle buttons: hide Save, show Apply; enable Delete for custom filters
     if (auto root = this->Content().try_as<FrameworkElement>())
     {
@@ -2245,8 +2232,8 @@ void winrt::Winvert4::implementation::MainWindow::AddNewFilterButton_Click(winrt
     }
 }
 
-    void winrt::Winvert4::implementation::MainWindow::DeleteFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
-    {
+void winrt::Winvert4::implementation::MainWindow::DeleteFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+{
     // Delete selected saved filter
     std::wstring name;
     if (auto combo = SavedFiltersComboBox())
@@ -2262,13 +2249,13 @@ void winrt::Winvert4::implementation::MainWindow::AddNewFilterButton_Click(winrt
     m_savedFilters.erase(std::remove_if(m_savedFilters.begin(), m_savedFilters.end(), [&](const SavedFilter& f){return f.name==name && !f.isBuiltin;}), m_savedFilters.end());
     UpdateSavedFiltersCombo();
     UpdateFilterDropdown();
+    SaveAppState();
     // After delete, disable the delete button
     if (auto root = this->Content().try_as<FrameworkElement>())
     {
         if (auto btn = root.FindName(L"DeleteFilterButton").try_as<Controls::Button>()) btn.IsEnabled(false);
     }
-    SaveSavedFilters();
-    SaveAppState();
+    
 }
 
 void winrt::Winvert4::implementation::MainWindow::ClearFilterButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -2599,21 +2586,22 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
 
 
     void winrt::Winvert4::implementation::MainWindow::LumaWeight_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&)
-{
-    // Defer handling until after the window is fully initialized to avoid race conditions.
-    if (!m_isAppInitialized) return;
-
-    m_lumaWeights[0] = static_cast<float>(LumaRNumberBox().Value());
-    m_lumaWeights[1] = static_cast<float>(LumaGNumberBox().Value());
-    m_lumaWeights[2] = static_cast<float>(LumaBNumberBox().Value());
-
-    // Apply to all windows immediately
-    for (size_t i = 0; i < m_windowSettings.size(); ++i)
     {
-        memcpy(m_windowSettings[i].lumaWeights, m_lumaWeights, sizeof(m_lumaWeights));
-        UpdateSettingsForGroup(static_cast<int>(i));
+        // Defer handling until after the window is fully initialized to avoid race conditions.
+        if (!m_isAppInitialized) return;
+
+        m_lumaWeights[0] = static_cast<float>(LumaRNumberBox().Value());
+        m_lumaWeights[1] = static_cast<float>(LumaGNumberBox().Value());
+        m_lumaWeights[2] = static_cast<float>(LumaBNumberBox().Value());
+
+        // Apply to all windows immediately
+        for (size_t i = 0; i < m_windowSettings.size(); ++i)
+        {
+            memcpy(m_windowSettings[i].lumaWeights, m_lumaWeights, sizeof(m_lumaWeights));
+            UpdateSettingsForGroup(static_cast<int>(i));
+        }
+        SaveAppState();
     }
-}
 
     void winrt::Winvert4::implementation::MainWindow::BrightnessDelay_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&)
     {
@@ -2637,6 +2625,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
             m_windowSettings[i].brightnessProtectionDelayFrames = m_brightnessDelayFrames;
             UpdateSettingsForGroup(static_cast<int>(i));
         }
+        SaveAppState();
     }
 
 
@@ -2817,206 +2806,111 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
     }
 
 
-void winrt::Winvert4::implementation::MainWindow::SaveGlobalColorMaps()
+// --- Unified AppState to blob file ---
+void winrt::Winvert4::implementation::MainWindow::SaveAppState()
 {
-    if (m_isClosing) return;
+    if (!m_isSavingEnabled) { winvert4::Log("SaveAppState: suppressed (init)"); return; }
     using winrt::Windows::Storage::ApplicationData;
-    std::wstring s;
-        for (const auto& e : m_globalColorMaps)
-        {
-            s += (e.enabled ? L"1" : L"0"); s += L",";
-            s += std::to_wstring(e.srcR); s += L","; s += std::to_wstring(e.srcG); s += L","; s += std::to_wstring(e.srcB); s += L",";
-            s += std::to_wstring(e.dstR); s += L","; s += std::to_wstring(e.dstG); s += L","; s += std::to_wstring(e.dstB); s += L",";
-            s += std::to_wstring(e.tolerance);
-            s += L"|";
-        }
-    auto local = ApplicationData::Current().LocalSettings();
-    local.Values().Insert(L"ColorMaps", box_value(winrt::hstring{ s }));
-    // Also update consolidated app state
-    SaveAppState();
-}
+    try
+    {
+        auto folder = ApplicationData::Current().LocalFolder();
+        std::wstring path = std::wstring(folder.Path().c_str()) + L"\\appstate.blob";
 
-    void winrt::Winvert4::implementation::MainWindow::LoadGlobalColorMaps()
-    {
-        using winrt::Windows::Storage::ApplicationData;
-        auto local = ApplicationData::Current().LocalSettings();
-        auto boxed = local.Values().TryLookup(L"ColorMaps");
-        if (!boxed) return;
-        winrt::hstring hs = unbox_value_or<winrt::hstring>(boxed, L"");
-        if (hs.empty()) return;
-        std::wstring s{ hs.c_str() };
-        m_globalColorMaps.clear();
-        size_t pos = 0;
-        while (pos < s.size())
-        {
-            size_t next = s.find(L'|', pos);
-            std::wstring row = s.substr(pos, next == std::wstring::npos ? std::wstring::npos : next - pos);
-            if (!row.empty())
-            {
-                ColorMapEntry e{};
-                int vals[8]{}; int idx = 0;
-                size_t last = 0; size_t p2;
-                while ((p2 = row.find(L',', last)) != std::wstring::npos && idx < 7)
-                {
-                    vals[idx++] = _wtoi(row.substr(last, p2 - last).c_str());
-                    last = p2 + 1;
-                }
-                if (last < row.size()) vals[idx++] = _wtoi(row.substr(last).c_str());
-                if (idx >= 8)
-                {
-                    e.enabled = vals[0] != 0;
-                    e.srcR = (uint8_t)vals[1]; e.srcG = (uint8_t)vals[2]; e.srcB = (uint8_t)vals[3];
-                    e.dstR = (uint8_t)vals[4]; e.dstG = (uint8_t)vals[5]; e.dstB = (uint8_t)vals[6];
-                    e.tolerance = vals[7];
-                    m_globalColorMaps.push_back(e);
-                }
-            }
-            if (next == std::wstring::npos) break;
-            pos = next + 1;
-        }
-        RefreshColorMapList();
-        SaveAppState();
-    }
-    void winrt::Winvert4::implementation::MainWindow::SaveSavedFilters()
-    {
-        using winrt::Windows::Storage::ApplicationData;
-        std::wstring s;
-        for (const auto& f : m_savedFilters)
-        {
-            if (f.isBuiltin) continue;
-            std::wstring name = f.name;
-            for (auto& ch : name) if (ch == L'|') ch = L' ';
-            s += name; s += L"|";
-            for (int i = 0; i < 16; ++i)
-            {
-                s += std::to_wstring(f.mat[i]);
-                if (i != 15) s += L",";
-            }
-            s += L"|";
-            for (int i = 0; i < 4; ++i)
-            {
-                s += std::to_wstring(f.offset[i]);
-                if (i != 3) s += L",";
-            }
-            s += L"\n";
-        }
-        try
-        {
-            auto local = ApplicationData::Current().LocalSettings();
-            local.Values().Insert(L"SavedFilters", box_value(winrt::hstring{ s }));
-        }
-        catch (...) { }
-    }
+        winvert4::Logf("SaveAppState: path=%ls", path.c_str());
+        std::wofstream ofs(path, std::ios::trunc | std::ios::binary);
+        if (!ofs) { winvert4::Log("SaveAppState: open failed"); return; }
+        ofs.imbue(std::locale::classic());
+        ofs << L"V=1\n";
+        ofs << L"FPS=" << (m_showFpsOverlay ? 1 : 0) << L"\n";
+        ofs << L"SELCLR=" << (int)GetRValue(m_selectionColor) << L"," << (int)GetGValue(m_selectionColor) << L"," << (int)GetBValue(m_selectionColor) << L"\n";
+        ofs << L"BRIGHTDELAY=" << m_brightnessDelayFrames << L"\n";
+        ofs << L"LUMA=" << std::fixed << std::setprecision(6) << m_lumaWeights[0] << L"," << m_lumaWeights[1] << L"," << m_lumaWeights[2] << L"\n";
+        ofs << L"HKI=" << m_hotkeyInvertMod << L"," << m_hotkeyInvertVk << L"\n";
+        ofs << L"HKF=" << m_hotkeyFilterMod << L"," << m_hotkeyFilterVk << L"\n";
+        ofs << L"HKR=" << m_hotkeyRemoveMod << L"," << m_hotkeyRemoveVk << L"\n";
+        ofs << L"FAV=" << m_favoriteFilterIndex << L"\n";
 
-    void winrt::Winvert4::implementation::MainWindow::LoadSavedFilters()
-    {
-    // Load from LocalSettings only to avoid blocking the UI thread with async .get() calls
-    using winrt::Windows::Storage::ApplicationData;
-    auto local = ApplicationData::Current().LocalSettings();
-    auto boxed = local.Values().TryLookup(L"SavedFilters");
-    if (!boxed) return;
-    winrt::hstring hs = unbox_value_or<winrt::hstring>(boxed, L"");
-    if (hs.empty()) return;
-    std::wstring ws{ hs.c_str() };
-    size_t pos = 0;
-    while (pos < ws.size())
-    {
-        size_t end = ws.find(L'\n', pos);
-        std::wstring line = ws.substr(pos, (end == std::wstring::npos) ? std::wstring::npos : (end - pos));
-        if (!line.empty())
-        {
-            size_t p1 = line.find(L'|');
-            size_t p2 = (p1 == std::wstring::npos) ? std::wstring::npos : line.find(L'|', p1 + 1);
-            if (p1 != std::wstring::npos && p2 != std::wstring::npos)
-            {
-                SavedFilter sf{}; sf.isBuiltin = false;
-                sf.name = line.substr(0, p1);
-                // parse 16 floats
-                std::wstring mpart = line.substr(p1 + 1, p2 - (p1 + 1));
-                int mi = 0; size_t last = 0; while (mi < 16 && last <= mpart.size())
-                {
-                    size_t comma = mpart.find(L',', last);
-                    std::wstring tok = mpart.substr(last, (comma == std::wstring::npos) ? std::wstring::npos : (comma - last));
-                    if (!tok.empty()) { try { sf.mat[mi] = std::stof(tok); } catch (...) {} }
-                    ++mi; if (comma == std::wstring::npos) break; last = comma + 1;
-                }
-                // parse 4 floats
-                std::wstring opart = line.substr(p2 + 1);
-                int oi = 0; last = 0; while (oi < 4 && last <= opart.size())
-                {
-                    size_t comma = opart.find(L',', last);
-                    std::wstring tok = opart.substr(last, (comma == std::wstring::npos) ? std::wstring::npos : (comma - last));
-                    if (!tok.empty()) { try { sf.offset[oi] = std::stof(tok); } catch (...) {} }
-                    ++oi; if (comma == std::wstring::npos) break; last = comma + 1;
-                }
-                bool exists = false;
-                for (auto& f2 : m_savedFilters) { if (!f2.isBuiltin && f2.name == sf.name) { exists = true; break; } }
-                if (!exists) m_savedFilters.push_back(sf);
-            }
-        }
-        if (end == std::wstring::npos) break; pos = end + 1;
-    }
-}
-    void winrt::Winvert4::implementation::MainWindow::SaveAppState()
-    {
-        if (m_isClosing) return;
-        using winrt::Windows::Storage::ApplicationData;
-        std::wstring s;
-        s += L"V=1\n";
-        s += L"FPS="; s += (m_showFpsOverlay ? L"1" : L"0"); s += L"\n";
-        s += L"FAV="; s += std::to_wstring(m_favoriteFilterIndex); s += L"\n";
-        s += L"SELROW="; s += std::to_wstring(m_selectedColorMapRowIndex); s += L"\n";
-        s += L"SELSRC="; s += (m_selectedSwatchIsSource ? L"1" : L"0"); s += L"\n";
+        // Saved custom filters
         int countCustom = 0; for (auto& f : m_savedFilters) if (!f.isBuiltin) ++countCustom;
-        s += L"FILTERS="; s += std::to_wstring(countCustom); s += L"\n";
+        ofs << L"FILTERS=" << countCustom << L"\n";
         for (auto& f : m_savedFilters)
         {
             if (f.isBuiltin) continue;
-            std::wstring name = f.name; for (auto& ch : name) if (ch == L'\n' || ch == L'\r') ch = L' ';
-            s += L"FN="; s += name; s += L"\n";
-            s += L"FM="; for (int i = 0; i < 16; ++i) { s += std::to_wstring(f.mat[i]); if (i != 15) s += L","; } s += L"\n";
-            s += L"FO="; for (int i = 0; i < 4; ++i) { s += std::to_wstring(f.offset[i]); if (i != 3) s += L","; } s += L"\n";
+            std::wstring safe = f.name;
+            for (auto& ch : safe) if (ch == L'\n' || ch == L'\r') ch = L' ';
+            ofs << L"FN=" << safe << L"\n";
+            ofs << L"FM=";
+            for (int i = 0; i < 16; ++i) { ofs << std::fixed << std::setprecision(6) << f.mat[i]; if (i != 15) ofs << L","; }
+            ofs << L"\nFO=";
+            for (int i = 0; i < 4; ++i) { ofs << std::fixed << std::setprecision(6) << f.offset[i]; if (i != 3) ofs << L","; }
+            ofs << L"\n";
         }
-        s += L"COLORMAPS="; s += std::to_wstring(static_cast<int>(m_globalColorMaps.size())); s += L"\n";
+
+        // Color maps
+        ofs << L"COLORMAPS=" << (int)m_globalColorMaps.size() << L"\n";
         for (auto& e : m_globalColorMaps)
         {
-            s += L"CM=";
-            s += (e.enabled ? L"1" : L"0"); s += L",";
-            s += std::to_wstring(e.srcR); s += L","; s += std::to_wstring(e.srcG); s += L","; s += std::to_wstring(e.srcB); s += L",";
-            s += std::to_wstring(e.dstR); s += L","; s += std::to_wstring(e.dstG); s += L","; s += std::to_wstring(e.dstB); s += L",";
-            s += std::to_wstring(e.tolerance); s += L"\n";
+            ofs << L"CM=" << (e.enabled ? 1 : 0) << L","
+                << (int)e.srcR << L"," << (int)e.srcG << L"," << (int)e.srcB << L","
+                << (int)e.dstR << L"," << (int)e.dstG << L"," << (int)e.dstB << L"," << e.tolerance << L"\n";
         }
-        try { auto local = ApplicationData::Current().LocalSettings(); local.Values().Insert(L"AppState", box_value(winrt::hstring{ s })); } catch (...) { }
     }
+    catch (...) { }
+}
 
-    void winrt::Winvert4::implementation::MainWindow::LoadAppState()
+void winrt::Winvert4::implementation::MainWindow::LoadAppState()
+{
+    using winrt::Windows::Storage::ApplicationData;
+    try
     {
-        using winrt::Windows::Storage::ApplicationData;
-        auto local = ApplicationData::Current().LocalSettings();
-        auto boxed = local.Values().TryLookup(L"AppState");
-        if (!boxed) return;
-        winrt::hstring hs = unbox_value_or<winrt::hstring>(boxed, L"");
-        if (hs.empty()) return;
-        std::wstring s{ hs.c_str() };
-        size_t pos = 0;
+        auto folder = ApplicationData::Current().LocalFolder();
+        std::wstring path = std::wstring(folder.Path().c_str()) + L"\\appstate.blob";
+        winvert4::Logf("LoadAppState: path=%ls", path.c_str());
+        std::wifstream ifs(path, std::ios::binary);
+        if (!ifs) { winvert4::Log("LoadAppState: open failed"); return; }
+        ifs.imbue(std::locale::classic());
+        std::wstring line;
         m_savedFilters.erase(std::remove_if(m_savedFilters.begin(), m_savedFilters.end(), [](const SavedFilter& f){ return !f.isBuiltin; }), m_savedFilters.end());
         m_globalColorMaps.clear();
-        while (pos < s.size())
+
+        bool hasSelClr = false; int selR = 255, selG = 0, selB = 0;
+        while (std::getline(ifs, line))
         {
-            size_t end = s.find(L'\n', pos);
-            std::wstring line = s.substr(pos, (end == std::wstring::npos) ? std::wstring::npos : (end - pos));
             if (line.rfind(L"FPS=", 0) == 0) { m_showFpsOverlay = (line.size() > 4 && line[4] == L'1'); }
+            else if (line.rfind(L"SELCLR=", 0) == 0)
+            {
+                std::wstring rest = line.substr(7);
+                int vals[3]{}; int idx = 0; size_t last = 0; size_t p2;
+                while ((p2 = rest.find(L',', last)) != std::wstring::npos && idx < 2) { vals[idx++] = _wtoi(rest.substr(last, p2 - last).c_str()); last = p2 + 1; }
+                if (last < rest.size()) vals[idx++] = _wtoi(rest.substr(last).c_str());
+                if (idx >= 3) { selR = vals[0] & 0xFF; selG = vals[1] & 0xFF; selB = vals[2] & 0xFF; hasSelClr = true; }
+            }
+            else if (line.rfind(L"BRIGHTDELAY=", 0) == 0) { try { m_brightnessDelayFrames = std::stoi(line.substr(12)); } catch (...) {} }
+            else if (line.rfind(L"LUMA=", 0) == 0)
+            {
+                std::wstring rest = line.substr(5); int idx = 0; size_t last = 0;
+                while (idx < 3 && last <= rest.size()) { size_t comma = rest.find(L',', last); std::wstring tok = rest.substr(last, (comma == std::wstring::npos) ? std::wstring::npos : (comma - last)); if (!tok.empty()) { try { m_lumaWeights[idx] = std::stof(tok); } catch (...) {} } ++idx; if (comma == std::wstring::npos) break; last = comma + 1; }
+            }
+            else if (line.rfind(L"HKI=", 0) == 0)
+            {
+                std::wstring rest = line.substr(4); size_t comma = rest.find(L','); if (comma != std::wstring::npos) { try { m_hotkeyInvertMod = static_cast<UINT>(std::stoul(rest.substr(0, comma))); } catch (...) {} try { m_hotkeyInvertVk = static_cast<UINT>(std::stoul(rest.substr(comma + 1))); } catch (...) {} }
+            }
+            else if (line.rfind(L"HKF=", 0) == 0)
+            {
+                std::wstring rest = line.substr(4); size_t comma = rest.find(L','); if (comma != std::wstring::npos) { try { m_hotkeyFilterMod = static_cast<UINT>(std::stoul(rest.substr(0, comma))); } catch (...) {} try { m_hotkeyFilterVk = static_cast<UINT>(std::stoul(rest.substr(comma + 1))); } catch (...) {} }
+            }
+            else if (line.rfind(L"HKR=", 0) == 0)
+            {
+                std::wstring rest = line.substr(4); size_t comma = rest.find(L','); if (comma != std::wstring::npos) { try { m_hotkeyRemoveMod = static_cast<UINT>(std::stoul(rest.substr(0, comma))); } catch (...) {} try { m_hotkeyRemoveVk = static_cast<UINT>(std::stoul(rest.substr(comma + 1))); } catch (...) {} }
+            }
             else if (line.rfind(L"FAV=", 0) == 0) { try { m_favoriteFilterIndex = std::stoi(line.substr(4)); } catch (...) {} }
-            else if (line.rfind(L"SELROW=", 0) == 0) { try { m_selectedColorMapRowIndex = std::stoi(line.substr(7)); } catch (...) { m_selectedColorMapRowIndex = -1; } }
-            else if (line.rfind(L"SELSRC=", 0) == 0) { m_selectedSwatchIsSource = (line.size() > 7 && line[7] == L'1'); }
             else if (line.rfind(L"FILTERS=", 0) == 0)
             {
                 int n = 0; try { n = std::stoi(line.substr(9)); } catch (...) { n = 0; }
                 for (int k = 0; k < n; ++k)
                 {
-                    pos = (end == std::wstring::npos) ? s.size() : end + 1; end = s.find(L'\n', pos); std::wstring fn = s.substr(pos, (end == std::wstring::npos) ? std::wstring::npos : (end - pos));
-                    pos = (end == std::wstring::npos) ? s.size() : end + 1; end = s.find(L'\n', pos); std::wstring fm = s.substr(pos, (end == std::wstring::npos) ? std::wstring::npos : (end - pos));
-                    pos = (end == std::wstring::npos) ? s.size() : end + 1; end = s.find(L'\n', pos); std::wstring fo = s.substr(pos, (end == std::wstring::npos) ? std::wstring::npos : (end - pos));
+                    std::wstring fn, fm, fo;
+                    if (!std::getline(ifs, fn)) break; if (!std::getline(ifs, fm)) break; if (!std::getline(ifs, fo)) break;
                     SavedFilter sf{}; sf.isBuiltin = false; if (fn.rfind(L"FN=", 0) == 0) sf.name = fn.substr(3);
                     if (fm.rfind(L"FM=", 0) == 0) { std::wstring mpart = fm.substr(3); int mi = 0; size_t last = 0; while (mi < 16 && last <= mpart.size()) { size_t comma = mpart.find(L',', last); std::wstring tok = mpart.substr(last, (comma == std::wstring::npos) ? std::wstring::npos : (comma - last)); if (!tok.empty()) { try { sf.mat[mi] = std::stof(tok); } catch (...) {} } ++mi; if (comma == std::wstring::npos) break; last = comma + 1; } }
                     if (fo.rfind(L"FO=", 0) == 0) { std::wstring opart = fo.substr(3); int oi = 0; size_t last = 0; while (oi < 4 && last <= opart.size()) { size_t comma = opart.find(L',', last); std::wstring tok = opart.substr(last, (comma == std::wstring::npos) ? std::wstring::npos : (comma - last)); if (!tok.empty()) { try { sf.offset[oi] = std::stof(tok); } catch (...) {} } ++oi; if (comma == std::wstring::npos) break; last = comma + 1; } }
@@ -3028,7 +2922,7 @@ void winrt::Winvert4::implementation::MainWindow::SaveGlobalColorMaps()
                 int m = 0; try { m = std::stoi(line.substr(10)); } catch (...) { m = 0; }
                 for (int k = 0; k < m; ++k)
                 {
-                    pos = (end == std::wstring::npos) ? s.size() : end + 1; end = s.find(L'\n', pos); std::wstring cm = s.substr(pos, (end == std::wstring::npos) ? std::wstring::npos : (end - pos));
+                    std::wstring cm; if (!std::getline(ifs, cm)) break;
                     if (cm.rfind(L"CM=", 0) == 0)
                     {
                         std::wstring row = cm.substr(3);
@@ -3038,15 +2932,33 @@ void winrt::Winvert4::implementation::MainWindow::SaveGlobalColorMaps()
                     }
                 }
             }
-            if (end == std::wstring::npos) break; pos = end + 1;
         }
+
+        // Apply loaded values to UI
         if (auto t = ShowFpsToggle()) t.IsOn(m_showFpsOverlay);
-        if (auto root = this->Content().try_as<FrameworkElement>()) { auto fav = root.FindName(L"FavoriteFilterComboBox").try_as<Controls::ComboBox>(); if (fav) fav.SelectedIndex(m_favoriteFilterIndex); }
+        if (hasSelClr)
+        {
+            winrt::Windows::UI::Color c{}; c.A = 255; c.R = static_cast<uint8_t>(selR); c.G = static_cast<uint8_t>(selG); c.B = static_cast<uint8_t>(selB);
+            if (auto picker = SelectionColorPicker()) picker.Color(c);
+            m_selectionColor = RGB(selR, selG, selB);
+        }
+        // Apply hotkeys and favorites UI
+        RegisterAllHotkeys();
+        UpdateAllHotkeyText();
+        if (auto root = this->Content().try_as<FrameworkElement>())
+        {
+            auto fav = root.FindName(L"FavoriteFilterComboBox").try_as<Controls::ComboBox>(); if (fav) fav.SelectedIndex(m_favoriteFilterIndex);
+            auto nb = root.FindName(L"BrightnessDelayNumberBox").try_as<Controls::NumberBox>(); if (nb) nb.Value(m_brightnessDelayFrames);
+        }
+        LumaRNumberBox().Value(m_lumaWeights[0]);
+        LumaGNumberBox().Value(m_lumaWeights[1]);
+        LumaBNumberBox().Value(m_lumaWeights[2]);
+        RefreshColorMapList();
         UpdateSavedFiltersCombo();
         UpdateFilterDropdown();
-        RefreshColorMapList();
-        SaveAppState();
     }
+    catch (...) { }
+}
     void winrt::Winvert4::implementation::MainWindow::ColorMappingToggle_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         int idx = SelectedTabIndex();
@@ -3056,8 +2968,6 @@ void winrt::Winvert4::implementation::MainWindow::SaveGlobalColorMaps()
         ApplyGlobalColorMapsToSettings(s);
         UpdateSettingsForGroup(idx, s);
         UpdateUIState();
-        // Load persisted color maps
-        LoadGlobalColorMaps();
     }
 
 void winrt::Winvert4::implementation::MainWindow::ColorMapAddButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -3069,7 +2979,7 @@ void winrt::Winvert4::implementation::MainWindow::ColorMapAddButton_Click(winrt:
     m_selectedColorMapRowIndex = 0;
     m_selectedSwatchIsSource = true;
     RefreshColorMapList();
-    SaveGlobalColorMaps();
+    SaveAppState();
 }
 
     void winrt::Winvert4::implementation::MainWindow::ColorMapEnable_Toggled(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -3095,7 +3005,7 @@ void winrt::Winvert4::implementation::MainWindow::ColorMapAddButton_Click(winrt:
                 }
             }
         }
-        SaveGlobalColorMaps();
+        SaveAppState();
     }
 
     void winrt::Winvert4::implementation::MainWindow::ColorMapSourceSwatch_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -3151,6 +3061,7 @@ void winrt::Winvert4::implementation::MainWindow::ColorMapAddButton_Click(winrt:
             if (maps[row].dstR == c.R && maps[row].dstG == c.G && maps[row].dstB == c.B) return;
             maps[row].dstR = c.R; maps[row].dstG = c.G; maps[row].dstB = c.B;
         }
+        SaveAppState();
         // Update only the affected swatch button's background to avoid rebuilding the whole list
         {
             Controls::StackPanel listPanel{ nullptr };
@@ -3215,7 +3126,6 @@ void winrt::Winvert4::implementation::MainWindow::ColorMapAddButton_Click(winrt:
             }
             }
         }
-        SaveGlobalColorMaps();
     }
 
     void winrt::Winvert4::implementation::MainWindow::ColorMapToleranceSlider_ValueChanged(winrt::Windows::Foundation::IInspectable const& sender, Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e)
@@ -3227,6 +3137,7 @@ void winrt::Winvert4::implementation::MainWindow::ColorMapAddButton_Click(winrt:
             auto tagObj = fe.Tag();
             if (tagObj) row = unbox_value<int>(tagObj);
         }
+        SaveAppState();
         auto& maps = m_globalColorMaps; if (row < 0 || row >= static_cast<int>(maps.size())) return;
         int newTol = static_cast<int>(e.NewValue());
         if (maps[row].tolerance == newTol) return;
@@ -3243,7 +3154,7 @@ void winrt::Winvert4::implementation::MainWindow::ColorMapAddButton_Click(winrt:
                 }
             }
         }
-        SaveGlobalColorMaps();
+        
     }
 
     void winrt::Winvert4::implementation::MainWindow::ColorMapRemoveButton_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -3255,7 +3166,7 @@ void winrt::Winvert4::implementation::MainWindow::ColorMapAddButton_Click(winrt:
         if (m_selectedColorMapRowIndex == row) { m_selectedColorMapRowIndex = -1; }
         else if (m_selectedColorMapRowIndex > row) { m_selectedColorMapRowIndex--; }
         RefreshColorMapList();
-        SaveGlobalColorMaps();
+        SaveAppState();
 // Push live update if mapping is enabled for the selected window
         {
             int idxSel = SelectedTabIndex();
@@ -3268,7 +3179,7 @@ void winrt::Winvert4::implementation::MainWindow::ColorMapAddButton_Click(winrt:
                 }
             }
         }
-        SaveGlobalColorMaps();
+        
     }
 
 void winrt::Winvert4::implementation::MainWindow::PreviewColorMapButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -3314,6 +3225,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewColorMapButton_Click(wi
             ApplyGlobalColorMapsToSettings(m_windowSettings[idx]);
             UpdateSettingsForGroup(idx);
         }
+        SaveAppState();
     }
 
 
