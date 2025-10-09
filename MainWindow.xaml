@@ -7,7 +7,74 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
+    <!-- Resources moved to Grid.Resources -->
+
     <Grid>
+        <Grid.Resources>
+            <!-- Template for a single Color Map row -->
+            <DataTemplate x:Key="ColorMapRowTemplate">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition/>
+                        <ColumnDefinition/>
+                        <ColumnDefinition/>
+                        <ColumnDefinition/>
+                        <ColumnDefinition/>
+                        <ColumnDefinition/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Enable checkbox -->
+                    <CheckBox x:Name="RowEnableCheckBox"
+                              Grid.Column="0"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"
+                              Padding="0"
+                              MinWidth="0"/>
+
+                    <!-- Source swatch -->
+                    <Button x:Name="RowSrcButton"
+                            Grid.Column="1"
+                            Width="36" Height="36"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Padding="0"
+                            BorderThickness="1"/>
+
+                    <!-- Arrow icon -->
+                    <Image Grid.Column="2"
+                           Height="32"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center">
+                        <Image.Source>
+                            <SvgImageSource UriSource="ms-appx:///Assets/arrow_right.svg"/>
+                        </Image.Source>
+                    </Image>
+
+                    <!-- Destination swatch -->
+                    <Button x:Name="RowDstButton"
+                            Grid.Column="3"
+                            Width="36" Height="36"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Padding="0"
+                            BorderThickness="1"/>
+
+                    <!-- Tolerance slider -->
+                    <Slider x:Name="RowToleranceSlider"
+                            Grid.Column="4"
+                            Minimum="0" Maximum="255" StepFrequency="1"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Stretch"/>
+
+                    <!-- Remove button -->
+                    <Button x:Name="RowRemoveButton"
+                            Grid.Column="5"
+                            Content="Remove"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"/>
+                </Grid>
+            </DataTemplate>
+        </Grid.Resources>
         <!-- Main Control Panel with Tabs -->
         <StackPanel x:Name="RootPanel" Orientation="Vertical" HorizontalAlignment="Stretch" VerticalAlignment="Top" Spacing="5" Padding="10">
             <TabView x:Name="RegionsTabView"
@@ -318,7 +385,35 @@
                                     <!-- Header moved into the first row inside the scroll list for alignment -->
 
                                     <ScrollViewer Grid.Column="0" Grid.Row="1" x:Name="ColorMapListScroll" VerticalScrollBarVisibility="Auto" Height="Auto" MaxHeight="460">
-                                        <StackPanel x:Name="ColorMapListPanel" Spacing="6"/>
+                                        <StackPanel x:Name="ColorMapListContainer" Spacing="6">
+                                            <!-- Header inside scroll area for alignment with rows -->
+                                            <Grid x:Name="ColorMapHeaderGrid" ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition/>
+                                                    <ColumnDefinition/>
+                                                    <ColumnDefinition/>
+                                                    <ColumnDefinition/>
+                                                    <ColumnDefinition/>
+                                                    <ColumnDefinition/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="Enable" Opacity="0.7" HorizontalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" Text="From" Opacity="0.7" HorizontalAlignment="Center"/>
+                                                <TextBlock Grid.Column="2" Text="" Opacity="0.7" HorizontalAlignment="Center"/>
+                                                <TextBlock Grid.Column="3" Text="To" Opacity="0.7" HorizontalAlignment="Center"/>
+                                                <TextBlock Grid.Column="4" Text="Tolerance" Opacity="0.7"/>
+                                                <TextBlock Grid.Column="5" Text=""/>
+                                            </Grid>
+                                            <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Margin="0,6,0,6"/>
+
+                                            <!-- Items list -->
+                                            <ItemsControl x:Name="ColorMapList">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Spacing="6"/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                            </ItemsControl>
+                                        </StackPanel>
                                     </ScrollViewer>
                                     <!-- Left: mapping list -->
                                     <!--<StackPanel Grid.Column="0" Spacing="8">

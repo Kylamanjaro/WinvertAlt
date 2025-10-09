@@ -2663,194 +2663,95 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
     // --- Color Mapping UI ---
     void winrt::Winvert4::implementation::MainWindow::RefreshColorMapList()
     {
-        Controls::StackPanel listPanel{ nullptr };
+        Controls::ItemsControl listCtrl{ nullptr };
+        DataTemplate rowTemplate{ nullptr };
+        Media::Brush accentBrush{ nullptr };
+
+        // Resolve UI elements and resources
+        if (auto root = this->Content().try_as<FrameworkElement>())
         {
-            auto root = this->Content().try_as<FrameworkElement>();
-            if (root) listPanel = root.FindName(L"ColorMapListPanel").try_as<Controls::StackPanel>();
+            listCtrl = root.FindName(L"ColorMapList").try_as<Controls::ItemsControl>();
+            auto obj = root.Resources().TryLookup(box_value(L"ColorMapRowTemplate"));
+            rowTemplate = obj.try_as<DataTemplate>();
         }
-        if (!listPanel) return;
+        if (!listCtrl || !rowTemplate) return;
+
+        // Accent brush (fallback to system blue)
+        if (auto app = Application::Current())
+        {
+            auto obj = app.Resources().TryLookup(box_value(L"AccentStrokeColorDefaultBrush"));
+            accentBrush = obj.try_as<Media::Brush>();
+        }
+        if (!accentBrush)
+        {
+            Media::SolidColorBrush sb; winrt::Windows::UI::Color cc{}; cc.A=255; cc.R=0; cc.G=120; cc.B=215; sb.Color(cc); accentBrush = sb;
+        }
 
         // Rebuild with UI-update guard to prevent spurious events
         m_isUpdatingColorMapUI = true;
-        listPanel.Children().Clear();
-
-        // Add header row inside the scroll list so it aligns with data rows
-        {
-            Controls::Grid header{};
-            header.ColumnSpacing(8);
-            auto cols = header.ColumnDefinitions();
-            cols.Append(Controls::ColumnDefinition());
-            cols.Append(Controls::ColumnDefinition());
-            cols.Append(Controls::ColumnDefinition());
-            cols.Append(Controls::ColumnDefinition());
-            cols.Append(Controls::ColumnDefinition());
-            cols.Append(Controls::ColumnDefinition());
-
-            auto makeHeader = [](const wchar_t* text) {
-                Controls::TextBlock tb{}; tb.Text(text); tb.Opacity(0.7); tb.HorizontalAlignment(HorizontalAlignment::Center); return tb; };
-            {
-                auto tb = makeHeader(L"Enable"); Controls::Grid::SetColumn(tb, 0); header.Children().Append(tb); 
-            }
-            {
-                auto tb = makeHeader(L"From"); Controls::Grid::SetColumn(tb, 1); header.Children().Append(tb);
-            }
-            {
-                //auto tb = makeHeader(L"\x2192"); Controls::Grid::SetColumn(tb, 2); header.Children().Append(tb);
-                auto tb = makeHeader(L""); Controls::Grid::SetColumn(tb, 2); header.Children().Append(tb);
-            }
-            {
-                auto tb = makeHeader(L"To"); Controls::Grid::SetColumn(tb, 3); header.Children().Append(tb);
-            }
-            {
-                auto tb = makeHeader(L"Tolerance"); Controls::Grid::SetColumn(tb, 4); header.Children().Append(tb);
-            }
-            {
-                auto tb = makeHeader(L""); Controls::Grid::SetColumn(tb, 4); header.Children().Append(tb);
-            }
-            listPanel.Children().Append(header);
-
-            // Separator line below header inside the scroll view
-            {
-                Media::Brush sepBrush{ nullptr };
-                if (auto app = Application::Current())
-                {
-                    auto obj = app.Resources().TryLookup(box_value(L"CardStrokeColorDefaultBrush"));
-                    sepBrush = obj.try_as<Media::Brush>();
-                }
-                if (!sepBrush)
-                {
-                    Media::SolidColorBrush sb; winrt::Windows::UI::Color c{}; c.A = 64; c.R = 0; c.G = 0; c.B = 0; sb.Color(c); sepBrush = sb;
-                }
-                Controls::Border sep{};
-                sep.BorderBrush(sepBrush);
-                winrt::Microsoft::UI::Xaml::Thickness bt{}; bt.Left = 0; bt.Top = 2; bt.Right = 0; bt.Bottom = 0; sep.BorderThickness(bt);
-                winrt::Microsoft::UI::Xaml::Thickness mg{}; mg.Left = 0; mg.Top = 6; mg.Right = 0; mg.Bottom = 6; sep.Margin(mg);
-                sep.HorizontalAlignment(HorizontalAlignment::Stretch);
-                listPanel.Children().Append(sep);
-            }
-        }
+        listCtrl.Items().Clear();
 
         auto& maps = m_globalColorMaps;
-        // Resolve an accent brush for selection highlight (fallback to system blue)
-        Media::Brush accentBrush{ nullptr };
-        {
-            auto app = Application::Current();
-            if (app)
-            {
-                auto res = app.Resources();
-                auto obj = res.TryLookup(box_value(L"AccentStrokeColorDefaultBrush"));
-                accentBrush = obj.try_as<Media::Brush>();
-            }
-            if (!accentBrush)
-            {
-                Media::SolidColorBrush sb; winrt::Windows::UI::Color cc{}; cc.A=255; cc.R=0; cc.G=120; cc.B=215; sb.Color(cc); accentBrush = sb;
-            }
-        }
-
         for (int i = 0; i < static_cast<int>(maps.size()); ++i)
         {
-            Controls::Grid rowGrid{};
-            rowGrid.ColumnSpacing(8);
-            auto cols = rowGrid.ColumnDefinitions();
-            cols.Append(Controls::ColumnDefinition());
-            cols.Append(Controls::ColumnDefinition());
-            cols.Append(Controls::ColumnDefinition());
-            cols.Append(Controls::ColumnDefinition());
-            cols.Append(Controls::ColumnDefinition());
-            cols.Append(Controls::ColumnDefinition());
+            auto row = rowTemplate.LoadContent().try_as<FrameworkElement>();
+            if (!row) continue;
 
             // Enable checkbox
-            Controls::CheckBox cb{};
-            cb.IsChecked(maps[i].enabled);
-            cb.Tag(box_value(i));
-            cb.HorizontalAlignment(HorizontalAlignment::Center);
-            cb.VerticalAlignment(VerticalAlignment::Center);
-            // Ensure the glyph itself centers by removing template padding
-            // and centering the content within the control.
-            cb.HorizontalContentAlignment(HorizontalAlignment::Center);
-            cb.Padding(ThicknessHelper::FromUniformLength(0));
-            cb.MinWidth(0);
-            cb.Content(box_value(L""));
-            cb.Checked([this](auto const& s, auto const& e){ ColorMapEnable_Toggled(s, e); });
-            cb.Unchecked([this](auto const& s, auto const& e){ ColorMapEnable_Toggled(s, e); });
-            Controls::Grid::SetColumn(cb, 0);
-            rowGrid.Children().Append(cb);
-
-            // Src swatch
-            Controls::Button srcBtn{};
-            srcBtn.Width(36); srcBtn.Height(36);
-            srcBtn.HorizontalAlignment(HorizontalAlignment::Center);
-            srcBtn.VerticalAlignment(VerticalAlignment::Center);
-            srcBtn.Padding(ThicknessHelper::FromUniformLength(0));
-            // Highlight if this swatch is the active selection
-            bool isSelSrc = (i == m_selectedColorMapRowIndex) && m_selectedSwatchIsSource;
-            srcBtn.BorderThickness(ThicknessHelper::FromUniformLength(isSelSrc ? 3 : 1));
-            if (isSelSrc && accentBrush) srcBtn.BorderBrush(accentBrush);
+            if (auto cb = row.FindName(L"RowEnableCheckBox").try_as<Controls::CheckBox>())
             {
+                cb.IsChecked(maps[i].enabled);
+                cb.Tag(box_value(i));
+                cb.HorizontalContentAlignment(HorizontalAlignment::Center);
+                cb.Padding(ThicknessHelper::FromUniformLength(0));
+                cb.MinWidth(0);
+                cb.Content(box_value(L""));
+                cb.Checked([this](auto const& s, auto const& e){ ColorMapEnable_Toggled(s, e); });
+                cb.Unchecked([this](auto const& s, auto const& e){ ColorMapEnable_Toggled(s, e); });
+            }
+
+            // Source swatch
+            bool isSelSrc = (i == m_selectedColorMapRowIndex) && m_selectedSwatchIsSource;
+            if (auto srcBtn = row.FindName(L"RowSrcButton").try_as<Controls::Button>())
+            {
+                srcBtn.Tag(box_value(i));
+                srcBtn.Click([this](auto const& s, auto const& e){ ColorMapSourceSwatch_Click(s, e); });
+                srcBtn.BorderThickness(ThicknessHelper::FromUniformLength(isSelSrc ? 3 : 1));
+                if (isSelSrc && accentBrush) srcBtn.BorderBrush(accentBrush);
                 winrt::Windows::UI::Color c{}; c.A = 255; c.R = maps[i].srcR; c.G = maps[i].srcG; c.B = maps[i].srcB;
                 Media::SolidColorBrush brush; brush.Color(c);
                 srcBtn.Background(brush);
             }
-            srcBtn.Tag(box_value(i));
-            srcBtn.Click([this](auto const& s, auto const& e){ ColorMapSourceSwatch_Click(s, e); });
-            Controls::Grid::SetColumn(srcBtn, 1);
-            rowGrid.Children().Append(srcBtn);
 
-            // Arrow (SVG image)
-            {
-                Controls::Image arrowImg{};
-                arrowImg.Height(32);
-                arrowImg.HorizontalAlignment(HorizontalAlignment::Center);
-                arrowImg.VerticalAlignment(VerticalAlignment::Center);
-                Imaging::SvgImageSource svgSrc(Uri(L"ms-appx:///Assets/arrow_right.svg"));
-                arrowImg.Source(svgSrc);
-                Controls::Grid::SetColumn(arrowImg, 2);
-                rowGrid.Children().Append(arrowImg);
-            }
-
-            // Dst swatch
-            Controls::Button dstBtn{};
-            dstBtn.Width(36); dstBtn.Height(36);
-            dstBtn.HorizontalAlignment(HorizontalAlignment::Center);
-            dstBtn.VerticalAlignment(VerticalAlignment::Center);
-            dstBtn.Padding(ThicknessHelper::FromUniformLength(0));
+            // Destination swatch
             bool isSelDst = (i == m_selectedColorMapRowIndex) && !m_selectedSwatchIsSource;
-            dstBtn.BorderThickness(ThicknessHelper::FromUniformLength(isSelDst ? 3 : 1));
-            if (isSelDst && accentBrush) dstBtn.BorderBrush(accentBrush);
+            if (auto dstBtn = row.FindName(L"RowDstButton").try_as<Controls::Button>())
             {
+                dstBtn.Tag(box_value(i));
+                dstBtn.Click([this](auto const& s, auto const& e){ ColorMapDestSwatch_Click(s, e); });
+                dstBtn.BorderThickness(ThicknessHelper::FromUniformLength(isSelDst ? 3 : 1));
+                if (isSelDst && accentBrush) dstBtn.BorderBrush(accentBrush);
                 winrt::Windows::UI::Color c{}; c.A = 255; c.R = maps[i].dstR; c.G = maps[i].dstG; c.B = maps[i].dstB;
                 Media::SolidColorBrush brush; brush.Color(c);
                 dstBtn.Background(brush);
             }
-            dstBtn.Tag(box_value(i));
-            dstBtn.Click([this](auto const& s, auto const& e){ ColorMapDestSwatch_Click(s, e); });
-            Controls::Grid::SetColumn(dstBtn, 3);
-            rowGrid.Children().Append(dstBtn);
 
-            // Tolerance (as Slider)
-            Controls::Slider tol{};
-            tol.Minimum(0);
-            tol.Maximum(255);
-            tol.StepFrequency(1);
-            tol.Value(maps[i].tolerance);
-            tol.Tag(box_value(i));
-            tol.VerticalAlignment(VerticalAlignment::Center);
-            tol.HorizontalAlignment(HorizontalAlignment::Stretch);
-            tol.ValueChanged([this](auto const& s, auto const& e){ ColorMapToleranceSlider_ValueChanged(s, e); });
-            Controls::Grid::SetColumn(tol, 4);
-            rowGrid.Children().Append(tol);
+            // Tolerance slider
+            if (auto tol = row.FindName(L"RowToleranceSlider").try_as<Controls::Slider>())
+            {
+                tol.Tag(box_value(i));
+                tol.Value(maps[i].tolerance);
+                tol.ValueChanged([this](auto const& s, auto const& e){ ColorMapToleranceSlider_ValueChanged(s, e); });
+            }
 
-            // Remove
-            Controls::Button rm{};
-            rm.Content(box_value(L"Remove"));
-            rm.Tag(box_value(i));
-            rm.Click([this](auto const& s, auto const& e){ ColorMapRemoveButton_Click(s, e); });
-            rm.HorizontalAlignment(HorizontalAlignment::Center);
-            rm.VerticalAlignment(VerticalAlignment::Center);
-            Controls::Grid::SetColumn(rm, 5);
-            rowGrid.Children().Append(rm);
+            // Remove button
+            if (auto rm = row.FindName(L"RowRemoveButton").try_as<Controls::Button>())
+            {
+                rm.Tag(box_value(i));
+                rm.Click([this](auto const& s, auto const& e){ ColorMapRemoveButton_Click(s, e); });
+            }
 
-            listPanel.Children().Append(rowGrid);
+            listCtrl.Items().Append(row);
         }
         m_isUpdatingColorMapUI = false;
     }
