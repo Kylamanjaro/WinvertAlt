@@ -1,5 +1,5 @@
 
-    #include "pch.h"
+#include "pch.h"
 #include "MainWindow.xaml.h"
 #include "Log.h"
 #include "OutputManager.h"
@@ -8,6 +8,7 @@
 #include <winrt/Windows.System.h>
 #include <winrt/Microsoft.UI.Xaml.Shapes.h>
 #include <winrt/Windows.Storage.h>
+#include <winrt/Windows.ApplicationModel.h>
 #include <gdiplus.h>
 #include <microsoft.ui.xaml.window.h>
 #include <algorithm>
@@ -124,6 +125,21 @@ namespace winrt::Winvert4::implementation
 
         InitializeComponent();
         this->Title(L"Winvert Control Panel");
+
+        // Populate About panel with app version: "Winvert <major.minor.build[.rev]>"
+        try
+        {
+            using namespace winrt::Windows::ApplicationModel;
+            auto ver = Package::Current().Id().Version();
+            std::wstringstream ss;
+            ss << L"Winvert " << ver.Major << L"." << ver.Minor << L"." << ver.Build;
+            if (ver.Revision != 0) ss << L"." << ver.Revision;
+            if (auto t = AboutVersionText()) t.Text(hstring{ ss.str() });
+        }
+        catch (...)
+        {
+            if (auto t = AboutVersionText()) t.Text(L"Winvert");
+        }
 
         auto windowNative{ this->try_as<::IWindowNative>() };
         winrt::check_hresult(windowNative->get_WindowHandle(&m_mainHwnd));
@@ -248,6 +264,10 @@ namespace winrt::Winvert4::implementation
         ::ShowWindow(m_mainHwnd, SW_HIDE);
 
         UpdateUIState();
+
+        // Initialize selection color toggle and picker enabled state from loaded settings
+        if (auto t = SelectionColorEnableToggle()) t.IsOn(m_useCustomSelectionColor);
+        if (auto cp = SelectionColorPicker()) cp.IsEnabled(m_useCustomSelectionColor);
         // Color maps are session-scoped until persistence is reintroduced
         UpdateAllHotkeyText();
         SetWindowSize(360, 120); // Prepare initial size, but keep window hidden
@@ -536,7 +556,7 @@ namespace winrt::Winvert4::implementation
         // Safely collapse any expander if it exists in the tree
         if (auto expander = BrightnessExpander()) expander.IsExpanded(false);
         if (SelectionColorExpander()) SelectionColorExpander().IsExpanded(false);
-        if (UpdateRateExpander()) UpdateRateExpander().IsExpanded(false);
+        //if (UpdateRateExpander()) UpdateRateExpander().IsExpanded(false);
         if (HotkeysExpander()) HotkeysExpander().IsExpanded(false);
         // Custom Filters collapsed by default on entry
         if (CustomFiltersExpander()) CustomFiltersExpander().IsExpanded(false);
@@ -1014,6 +1034,15 @@ namespace winrt::Winvert4::implementation
     {
         auto newColor = args.NewColor();
         m_selectionColor = RGB(newColor.R, newColor.G, newColor.B);
+        SaveAppState();
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::SelectionColorEnable_Toggled(IInspectable const&, RoutedEventArgs const&)
+    {
+        m_useCustomSelectionColor = SelectionColorEnableToggle().IsOn();
+        if (auto cp = SelectionColorPicker()) cp.IsEnabled(m_useCustomSelectionColor);
+        // Redraw selection overlay if active
+        if (m_selectionHwnd) InvalidateRect(m_selectionHwnd, nullptr, FALSE);
         SaveAppState();
     }
 
@@ -1520,7 +1549,8 @@ namespace winrt::Winvert4::implementation
             if (self->m_isDragging)
             {
                 RECT r = self->MakeRectFromPoints(self->m_ptStart, self->m_ptEnd);
-                Gdiplus::Color penColor(255, GetRValue(self->m_selectionColor), GetGValue(self->m_selectionColor), GetBValue(self->m_selectionColor));
+                COLORREF drawClr = self->m_useCustomSelectionColor ? self->m_selectionColor : RGB(255,0,0);
+                Gdiplus::Color penColor(255, GetRValue(drawClr), GetGValue(drawClr), GetBValue(drawClr));
                 Gdiplus::Pen selectionPen(penColor, 2.0f);
                 graphics.DrawRectangle(&selectionPen,
                     static_cast<INT>(r.left),
@@ -2678,6 +2708,26 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
                 auto tb = makeHeader(L""); Controls::Grid::SetColumn(tb, 4); header.Children().Append(tb);
             }
             listPanel.Children().Append(header);
+
+            // Separator line below header inside the scroll view
+            {
+                Media::Brush sepBrush{ nullptr };
+                if (auto app = Application::Current())
+                {
+                    auto obj = app.Resources().TryLookup(box_value(L"CardStrokeColorDefaultBrush"));
+                    sepBrush = obj.try_as<Media::Brush>();
+                }
+                if (!sepBrush)
+                {
+                    Media::SolidColorBrush sb; winrt::Windows::UI::Color c{}; c.A = 64; c.R = 0; c.G = 0; c.B = 0; sb.Color(c); sepBrush = sb;
+                }
+                Controls::Border sep{};
+                sep.BorderBrush(sepBrush);
+                winrt::Microsoft::UI::Xaml::Thickness bt{}; bt.Left = 0; bt.Top = 2; bt.Right = 0; bt.Bottom = 0; sep.BorderThickness(bt);
+                winrt::Microsoft::UI::Xaml::Thickness mg{}; mg.Left = 0; mg.Top = 6; mg.Right = 0; mg.Bottom = 6; sep.Margin(mg);
+                sep.HorizontalAlignment(HorizontalAlignment::Stretch);
+                listPanel.Children().Append(sep);
+            }
         }
 
         auto& maps = m_globalColorMaps;
@@ -2822,6 +2872,7 @@ void winrt::Winvert4::implementation::MainWindow::SaveAppState()
         ofs.imbue(std::locale::classic());
         ofs << L"V=1\n";
         ofs << L"FPS=" << (m_showFpsOverlay ? 1 : 0) << L"\n";
+        ofs << L"SELCLREN=" << (m_useCustomSelectionColor ? 1 : 0) << L"\n";
         ofs << L"SELCLR=" << (int)GetRValue(m_selectionColor) << L"," << (int)GetGValue(m_selectionColor) << L"," << (int)GetBValue(m_selectionColor) << L"\n";
         ofs << L"BRIGHTDELAY=" << m_brightnessDelayFrames << L"\n";
         ofs << L"LUMA=" << std::fixed << std::setprecision(6) << m_lumaWeights[0] << L"," << m_lumaWeights[1] << L"," << m_lumaWeights[2] << L"\n";
@@ -2873,10 +2924,11 @@ void winrt::Winvert4::implementation::MainWindow::LoadAppState()
         m_savedFilters.erase(std::remove_if(m_savedFilters.begin(), m_savedFilters.end(), [](const SavedFilter& f){ return !f.isBuiltin; }), m_savedFilters.end());
         m_globalColorMaps.clear();
 
-        bool hasSelClr = false; int selR = 255, selG = 0, selB = 0;
+        bool hasSelClr = false; int selR = 255, selG = 0, selB = 0; bool selClrEn = false;
         while (std::getline(ifs, line))
         {
             if (line.rfind(L"FPS=", 0) == 0) { m_showFpsOverlay = (line.size() > 4 && line[4] == L'1'); }
+            else if (line.rfind(L"SELCLREN=", 0) == 0) { selClrEn = (line.size() > 10 && line[10] == L'1'); }
             else if (line.rfind(L"SELCLR=", 0) == 0)
             {
                 std::wstring rest = line.substr(7);
@@ -2935,6 +2987,7 @@ void winrt::Winvert4::implementation::MainWindow::LoadAppState()
         }
 
         // Apply loaded values to UI
+        m_useCustomSelectionColor = selClrEn;
         if (auto t = ShowFpsToggle()) t.IsOn(m_showFpsOverlay);
         if (hasSelClr)
         {

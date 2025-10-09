@@ -96,7 +96,14 @@
                         <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
                             <Expander x:Name="SelectionColorExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                                 <Expander.Header>
-                                    <TextBlock Text="Selection border color" FontWeight="SemiBold"/>
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Custom border color" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <ToggleSwitch x:Name="SelectionColorEnableToggle" Grid.Column="1" OnContent="On" OffContent="Off" Toggled="SelectionColorEnable_Toggled"/>
+                                    </Grid>
                                 </Expander.Header>
                                 <StackPanel Spacing="8" Padding="8,4,0,8" HorizontalAlignment="Left">
                                     <ColorPicker x:Name="SelectionColorPicker" ColorSpectrumShape="Ring" IsAlphaEnabled="False" ColorChanged="SelectionColorPicker_ColorChanged"/>
@@ -135,14 +142,22 @@
 
                         <!-- Update Rate Card -->
                         <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
-                            <Expander x:Name="UpdateRateExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Show FPS overlay" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ToggleSwitch Grid.Column="1" x:Name="ShowFpsToggle" OnContent="On" OffContent="Off" IsOn="True" Toggled="ShowFpsToggle_Toggled"/>
+                            </Grid>
+                            <!--<Expander x:Name="UpdateRateExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                                 <Expander.Header>
                                     <TextBlock Text="Update rate" FontWeight="SemiBold"/>
                                 </Expander.Header>
                                 <StackPanel Spacing="8" Padding="8,4,0,8">
                                     <ToggleSwitch x:Name="ShowFpsToggle" Header="Show FPS overlay" IsOn="True" Toggled="ShowFpsToggle_Toggled"/>
                                 </StackPanel>
-                            </Expander>
+                            </Expander>-->
                         </Border>
 
                         <!-- Hotkeys Card -->
@@ -353,11 +368,10 @@
                         <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
                             <StackPanel Spacing="8">
                                 <TextBlock Text="About this app" FontSize="18" FontWeight="SemiBold"/>
-                                <TextBlock Text="Winvert" FontWeight="SemiBold"/>
-                                <TextBlock Text="Version --" Opacity="0.7"/>
-                                <HyperlinkButton Content="License" NavigateUri="https://github.com/"/>
+                                <TextBlock x:Name="AboutVersionText" Text="Winvert" FontWeight="SemiBold"/>
+                                <!--<HyperlinkButton Content="License" NavigateUri="https://github.com/"/>
                                 <HyperlinkButton Content="Privacy" NavigateUri="https://github.com/"/>
-                                <Button Content="Send feedback"/>
+                                <Button Content="Send feedback"/>-->
                             </StackPanel>
                         </Border>
                     </StackPanel>
