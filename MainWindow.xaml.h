@@ -252,6 +252,9 @@ namespace winrt::Winvert4::implementation
         bool m_isClosing{ false };
         bool m_isSavingEnabled{ false };
 
+        // Currently selected swatch button for live updates
+        winrt::Microsoft::UI::Xaml::Controls::Button m_selectedSwatchButton{ nullptr };
+
         // --- Sampling overlay (magnifier) ---
         static LRESULT CALLBACK SampleOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
         void ShowSampleOverlay();

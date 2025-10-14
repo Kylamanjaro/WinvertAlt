@@ -2721,6 +2721,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
                 winrt::Windows::UI::Color c{}; c.A = 255; c.R = maps[i].srcR; c.G = maps[i].srcG; c.B = maps[i].srcB;
                 Media::SolidColorBrush brush; brush.Color(c);
                 srcBtn.Background(brush);
+                if (isSelSrc) m_selectedSwatchButton = srcBtn;
             }
 
             // Destination swatch
@@ -2734,6 +2735,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewFilterToggle_Unchecked(
                 winrt::Windows::UI::Color c{}; c.A = 255; c.R = maps[i].dstR; c.G = maps[i].dstG; c.B = maps[i].dstB;
                 Media::SolidColorBrush brush; brush.Color(c);
                 dstBtn.Background(brush);
+                if (isSelDst) m_selectedSwatchButton = dstBtn;
             }
 
             // Tolerance slider
@@ -2975,7 +2977,8 @@ void winrt::Winvert4::implementation::MainWindow::ColorMapAddButton_Click(winrt:
             if (root) picker = root.FindName(L"ColorMapPicker").try_as<Controls::ColorPicker>();
         }
         if (picker) { m_isProgrammaticColorPickerChange = true; picker.Color(c); m_isProgrammaticColorPickerChange = false; }
-        // Update highlight to indicate selection
+        // Remember selected swatch button for live updates and refresh highlight
+        m_selectedSwatchButton = btn;
         RefreshColorMapList();
         SaveAppState();
     }
@@ -2993,7 +2996,8 @@ void winrt::Winvert4::implementation::MainWindow::ColorMapAddButton_Click(winrt:
             if (root) picker = root.FindName(L"ColorMapPicker").try_as<Controls::ColorPicker>();
         }
         if (picker) { m_isProgrammaticColorPickerChange = true; picker.Color(c); m_isProgrammaticColorPickerChange = false; }
-        // Update highlight to indicate selection
+        // Remember selected swatch button for live updates and refresh highlight
+        m_selectedSwatchButton = btn;
         RefreshColorMapList();
         SaveAppState();
     }
@@ -3016,54 +3020,72 @@ void winrt::Winvert4::implementation::MainWindow::ColorMapAddButton_Click(winrt:
             maps[row].dstR = c.R; maps[row].dstG = c.G; maps[row].dstB = c.B;
         }
         SaveAppState();
-        // Update only the affected swatch button's background to avoid rebuilding the whole list
+        // Update the selected swatch button directly if available
+        if (m_selectedSwatchButton)
         {
-            Controls::StackPanel listPanel{ nullptr };
+            Media::SolidColorBrush brush; winrt::Windows::UI::Color cc{}; cc.A=255; cc.R=c.R; cc.G=c.G; cc.B=c.B; brush.Color(cc);
+            m_selectedSwatchButton.Background(brush);
+            m_selectedSwatchButton.BorderThickness(ThicknessHelper::FromUniformLength(3));
+        }
+        // Fallback: locate and update via ItemsControl container
+        {
+            Controls::ItemsControl listCtrl{ nullptr };
             if (auto root = this->Content().try_as<FrameworkElement>())
-                listPanel = root.FindName(L"ColorMapListPanel").try_as<Controls::StackPanel>();
-            if (listPanel)
+                listCtrl = root.FindName(L"ColorMapList").try_as<Controls::ItemsControl>();
+            if (listCtrl)
             {
-                uint32_t size = listPanel.Children().Size();
-                // Account for header row if present (header + rows)
-                uint32_t baseIndex = (size == maps.size() + 1) ? 1u : 0u;
-                uint32_t childIndex = baseIndex + static_cast<uint32_t>(row);
-                if (childIndex < size)
+                uint32_t idx = static_cast<uint32_t>(row);
+                FrameworkElement rowRoot{ nullptr };
+                auto container = listCtrl.ContainerFromIndex(static_cast<int>(idx));
+                if (auto gridDirect = container.try_as<Controls::Grid>())
                 {
-                    auto rowGrid = listPanel.Children().GetAt(childIndex).try_as<Controls::Grid>();
-                    if (rowGrid)
+                    rowRoot = gridDirect;
+                }
+                else if (auto cp = container.try_as<Controls::ContentPresenter>())
+                {
+                    rowRoot = cp.Content().try_as<FrameworkElement>();
+                }
+                if (!rowRoot)
+                {
+                    // Fallback: Items entry (when ItemsControl doesn't create a container)
+                    rowRoot = listCtrl.Items().GetAt(idx).try_as<FrameworkElement>();
+                }
+                if (auto rowGrid = rowRoot.try_as<Controls::Grid>())
+                {
+                    Controls::Button target{ nullptr };
+                    if (m_selectedSwatchIsSource)
+                        target = rowGrid.FindName(L"RowSrcButton").try_as<Controls::Button>();
+                    else
+                        target = rowGrid.FindName(L"RowDstButton").try_as<Controls::Button>();
+                    if (!target)
                     {
+                        // Fallback: scan children by Grid.Column
                         int targetCol = m_selectedSwatchIsSource ? 1 : 3;
                         for (auto child : rowGrid.Children())
                         {
                             auto btn = child.try_as<Controls::Button>();
                             if (!btn) continue;
                             int col = Controls::Grid::GetColumn(btn);
-                            if (col == targetCol)
-                            {
-                                Media::SolidColorBrush brush;
-                                winrt::Windows::UI::Color cc{}; cc.A = 255; cc.R = c.R; cc.G = c.G; cc.B = c.B;
-                                brush.Color(cc);
-                                btn.Background(brush);
-                                // Emphasize selected swatch border after change with accent color
-                                btn.BorderThickness(ThicknessHelper::FromUniformLength(3));
-                                {
-                                    Media::Brush accentBrush{ nullptr };
-                                    auto app2 = Application::Current();
-                                    if (app2)
-                                    {
-                                        auto res2 = app2.Resources();
-                                        auto obj2 = res2.TryLookup(box_value(L"AccentStrokeColorDefaultBrush"));
-                                        accentBrush = obj2.try_as<Media::Brush>();
-                                    }
-                                    if (!accentBrush)
-                                    {
-                                        Media::SolidColorBrush sb2; winrt::Windows::UI::Color ac{}; ac.A=255; ac.R=0; ac.G=120; ac.B=215; sb2.Color(ac); accentBrush = sb2;
-                                    }
-                                    btn.BorderBrush(accentBrush);
-                                }
-                                break;
-                            }
+                            if (col == targetCol) { target = btn; break; }
                         }
+                    }
+                    if (target)
+                    {
+                        Media::SolidColorBrush brush; winrt::Windows::UI::Color cc{}; cc.A=255; cc.R=c.R; cc.G=c.G; cc.B=c.B; brush.Color(cc);
+                        target.Background(brush);
+                        target.BorderThickness(ThicknessHelper::FromUniformLength(3));
+                        Media::Brush accentBrush{ nullptr };
+                        if (auto app2 = Application::Current())
+                        {
+                            auto res2 = app2.Resources();
+                            auto obj2 = res2.TryLookup(box_value(L"AccentStrokeColorDefaultBrush"));
+                            accentBrush = obj2.try_as<Media::Brush>();
+                        }
+                        if (!accentBrush)
+                        {
+                            Media::SolidColorBrush sb2; winrt::Windows::UI::Color ac{}; ac.A=255; ac.R=0; ac.G=120; ac.B=215; sb2.Color(ac); accentBrush = sb2;
+                        }
+                        target.BorderBrush(accentBrush);
                     }
                 }
             }

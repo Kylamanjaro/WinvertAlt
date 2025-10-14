@@ -13,66 +13,69 @@
         <Grid.Resources>
             <!-- Template for a single Color Map row -->
             <DataTemplate x:Key="ColorMapRowTemplate">
-                <Grid ColumnSpacing="8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition/>
-                        <ColumnDefinition/>
-                        <ColumnDefinition/>
-                        <ColumnDefinition/>
-                        <ColumnDefinition/>
-                        <ColumnDefinition/>
-                    </Grid.ColumnDefinitions>
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="2" Padding="2">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition/>
+                            <ColumnDefinition/>
+                            <ColumnDefinition/>
+                            <ColumnDefinition/>
+                            <ColumnDefinition/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
 
-                    <!-- Enable checkbox -->
-                    <CheckBox x:Name="RowEnableCheckBox"
-                              Grid.Column="0"
-                              HorizontalAlignment="Center"
-                              VerticalAlignment="Center"
-                              Padding="0"
-                              MinWidth="0"/>
+                        <!-- Enable checkbox -->
+                        <CheckBox x:Name="RowEnableCheckBox"
+                                  Grid.Column="0"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Padding="0"
+                                  MinWidth="0"/>
 
-                    <!-- Source swatch -->
-                    <Button x:Name="RowSrcButton"
-                            Grid.Column="1"
-                            Width="36" Height="36"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Padding="0"
-                            BorderThickness="1"/>
+                        <!-- Source swatch -->
+                        <Button x:Name="RowSrcButton"
+                                Grid.Column="1"
+                                Width="36" Height="36"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Padding="0"
+                                BorderThickness="1"/>
 
-                    <!-- Arrow icon -->
-                    <Image Grid.Column="2"
-                           Height="32"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center">
-                        <Image.Source>
-                            <SvgImageSource UriSource="ms-appx:///Assets/arrow_right.svg"/>
-                        </Image.Source>
-                    </Image>
+                        <!-- Arrow icon -->
+                        <Image Grid.Column="2"
+                               Height="32"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               >
+                            <Image.Source>
+                                <SvgImageSource UriSource="ms-appx:///Assets/arrow_right.svg"/>
+                            </Image.Source>
+                        </Image>
 
-                    <!-- Destination swatch -->
-                    <Button x:Name="RowDstButton"
-                            Grid.Column="3"
-                            Width="36" Height="36"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Padding="0"
-                            BorderThickness="1"/>
+                        <!-- Destination swatch -->
+                        <Button x:Name="RowDstButton"
+                                Grid.Column="3"
+                                Width="36" Height="36"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Padding="0"
+                                BorderThickness="1"/>
 
-                    <!-- Tolerance slider -->
-                    <Slider x:Name="RowToleranceSlider"
-                            Grid.Column="4"
-                            Minimum="0" Maximum="255" StepFrequency="1"
-                            VerticalAlignment="Center"
-                            HorizontalAlignment="Stretch"/>
+                        <!-- Tolerance slider -->
+                        <Slider x:Name="RowToleranceSlider"
+                                Grid.Column="4"
+                                Minimum="0" Maximum="255" StepFrequency="1"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Stretch"/>
 
-                    <!-- Remove button -->
-                    <Button x:Name="RowRemoveButton"
-                            Grid.Column="5"
-                            Content="Remove"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"/>
-                </Grid>
+                        <!-- Remove button -->
+                        <Button x:Name="RowRemoveButton"
+                                Grid.Column="5"
+                                Content="Remove"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"/>
+                    </Grid>
+                </Border>
             </DataTemplate>
         </Grid.Resources>
         <!-- Main Control Panel with Tabs -->
@@ -161,7 +164,7 @@
 
                         <!-- Appearance / Border Color Card -->
                         <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
-                            <Expander x:Name="SelectionColorExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                            <Expander x:Name="SelectionColorExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" CornerRadius="2">
                                 <Expander.Header>
                                     <Grid ColumnSpacing="12">
                                         <Grid.ColumnDefinitions>
@@ -180,7 +183,7 @@
 
                         <!-- Brightness Protection Card -->
                         <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
-                            <Expander x:Name="BrightnessExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                            <Expander x:Name="BrightnessExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" CornerRadius="2">
                                 <Expander.Header>
                                     <Grid ColumnSpacing="12">
                                         <Grid.ColumnDefinitions>
@@ -209,14 +212,17 @@
 
                         <!-- Update Rate Card -->
                         <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
-                            <Grid ColumnSpacing="12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Show FPS overlay" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                <ToggleSwitch Grid.Column="1" x:Name="ShowFpsToggle" OnContent="On" OffContent="Off" IsOn="True" Toggled="ShowFpsToggle_Toggled"/>
-                            </Grid>
+                            <!-- Match Expander: semi-transparent inner fill -->
+                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="2" Padding="2">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Show FPS overlay" FontWeight="SemiBold" VerticalAlignment="Center" Margin="16,0,0,0"/>
+                                    <ToggleSwitch Grid.Column="1" x:Name="ShowFpsToggle" OnContent="On" OffContent="Off" IsOn="True" Toggled="ShowFpsToggle_Toggled"/>
+                                </Grid>
+                            </Border>
                             <!--<Expander x:Name="UpdateRateExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                                 <Expander.Header>
                                     <TextBlock Text="Update rate" FontWeight="SemiBold"/>
@@ -229,7 +235,7 @@
 
                         <!-- Hotkeys Card -->
                         <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
-                            <Expander x:Name="HotkeysExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                            <Expander x:Name="HotkeysExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" CornerRadius="2">
                                 <Expander.Header>
                                     <TextBlock Text="Hotkeys" FontWeight="SemiBold"/>
                                 </Expander.Header>
@@ -264,7 +270,8 @@
                                       HorizontalAlignment="Stretch"
                                       HorizontalContentAlignment="Stretch"
                                       Collapsed="CustomFiltersExpander_Collapsed"
-                                      Expanding="CustomFiltersExpander_Expanding">
+                                      Expanding="CustomFiltersExpander_Expanding"
+                                      CornerRadius="2">
                                 <Expander.Header>
                                     <TextBlock Text="Custom filters" FontWeight="SemiBold"/>
                                 </Expander.Header>
@@ -356,20 +363,22 @@
                                 BorderThickness="1" CornerRadius="8" Padding="12">
                             <Expander x:Name="ColorMappingExpander"
                                       HorizontalAlignment="Stretch"
-                                      HorizontalContentAlignment="Stretch">
+                                      HorizontalContentAlignment="Stretch"
+                                      CornerRadius="2">
                                 <Expander.Header>
                                     <TextBlock Text="Color mapping" FontWeight="SemiBold"/>
                                 </Expander.Header>
-                                <Grid ColumnSpacing="16" Padding="8,4,0,8">
+                                <Grid ColumnSpacing="16" Padding="0,4,0,8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <Grid.RowDefinitions>
+                                        <!-- Make header row compact, table fills remaining space -->
                                         <RowDefinition Height="*"/>
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
-                                    <TextBlock Grid.Column="0" Grid.Row="0" Text="Define color replacements" HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Column="0" Grid.Row="0" FontSize="24" Text="Define color replacements" HorizontalAlignment="Center"/>
                                     <StackPanel Grid.Column="1" Grid.Row="0" Orientation="Horizontal" Spacing="8">
                                         <Button x:Name="ColorMapAddButton" Content="Add" Click="ColorMapAddButton_Click"/>
                                         <Button x:Name="ColorMapSampleButton" Content="Sample" Click="ColorMapSampleButton_Click"/>
@@ -385,7 +394,7 @@
                                     <!-- Header moved into the first row inside the scroll list for alignment -->
 
                                     <ScrollViewer Grid.Column="0" Grid.Row="1" x:Name="ColorMapListScroll" VerticalScrollBarVisibility="Auto" Height="Auto" MaxHeight="460">
-                                        <StackPanel x:Name="ColorMapListContainer" Spacing="6">
+                                        <StackPanel x:Name="ColorMapListContainer" Spacing="6" Padding="4">
                                             <!-- Header inside scroll area for alignment with rows -->
                                             <Grid x:Name="ColorMapHeaderGrid" ColumnSpacing="8">
                                                 <Grid.ColumnDefinitions>
@@ -396,14 +405,14 @@
                                                     <ColumnDefinition/>
                                                     <ColumnDefinition/>
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="Enable" Opacity="0.7" HorizontalAlignment="Center"/>
-                                                <TextBlock Grid.Column="1" Text="From" Opacity="0.7" HorizontalAlignment="Center"/>
-                                                <TextBlock Grid.Column="2" Text="" Opacity="0.7" HorizontalAlignment="Center"/>
-                                                <TextBlock Grid.Column="3" Text="To" Opacity="0.7" HorizontalAlignment="Center"/>
-                                                <TextBlock Grid.Column="4" Text="Tolerance" Opacity="0.7"/>
-                                                <TextBlock Grid.Column="5" Text=""/>
+                                                <TextBlock Grid.Column="0" FontSize="18" Text="Enable" Opacity="0.7" HorizontalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" FontSize="18" Text="From" Opacity="0.7" HorizontalAlignment="Center"/>
+                                                <TextBlock Grid.Column="2" FontSize="18" Text="" Opacity="0.7" HorizontalAlignment="Center"/>
+                                                <TextBlock Grid.Column="3" FontSize="18" Text="To" Opacity="0.7" HorizontalAlignment="Center"/>
+                                                <TextBlock Grid.Column="4" FontSize="18" Text="Tolerance" Opacity="0.7"/>
+                                                <TextBlock Grid.Column="5" FontSize="18" Text=""/>
                                             </Grid>
-                                            <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Margin="0,6,0,6"/>
+                                            <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,4,0,0" Margin="0,6,0,6"/>
 
                                             <!-- Items list -->
                                             <ItemsControl x:Name="ColorMapList">
@@ -415,42 +424,6 @@
                                             </ItemsControl>
                                         </StackPanel>
                                     </ScrollViewer>
-                                    <!-- Left: mapping list -->
-                                    <!--<StackPanel Grid.Column="0" Spacing="8">
-                                        <TextBlock Grid.Column="0" Text="Define color replacements" HorizontalAlignment="Center"/>
-
-                                        <Grid ColumnSpacing="8" Margin="0,4,0,0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="40"/>
-                                                <ColumnDefinition Width="60"/>
-                                                <ColumnDefinition Width="24"/>
-                                                <ColumnDefinition Width="60"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Text="On" HorizontalAlignment="Center" Opacity="0.7"/>
-                                            <TextBlock Grid.Column="1" Text="From" HorizontalAlignment="Center" Opacity="0.7"/>
-                                            <TextBlock Grid.Column="2" Text="→" HorizontalAlignment="Center" Opacity="0.7"/>
-                                            <TextBlock Grid.Column="3" Text="To" HorizontalAlignment="Center" Opacity="0.7"/>
-                                            <TextBlock Grid.Column="4" Text="Tolerance" Opacity="0.7"/>
-                                            <TextBlock Grid.Column="5" Text=""/>
-                                        </Grid>
-
-                                        <ScrollViewer x:Name="ColorMapListScroll" VerticalScrollBarVisibility="Auto" Height="Auto" MaxHeight="460">
-                                            <StackPanel x:Name="ColorMapListPanel" Spacing="6"/>
-                                        </ScrollViewer>
-                                    </StackPanel> -->
-
-                                    <!-- Right: shared color picker for swatches -->
-                                    <!--<StackPanel Grid.Column="1" Grid.Row="2" Padding="0,32,0,0" Spacing="8">
-                                        <ColorPicker x:Name="ColorMapPicker" ColorSpectrumShape="Ring" IsAlphaEnabled="False" ColorChanged="ColorMapPicker_ColorChanged"/>
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <Button x:Name="ColorMapAddButton" Content="Add" Click="ColorMapAddButton_Click"/>
-                                            <Button x:Name="ColorMapSampleButton" Content="Sample" Click="ColorMapSampleButton_Click"/>
-                                            <ToggleButton x:Name="PreviewColorMapToggle" Content="Preview" Checked="PreviewColorMapToggle_Checked" Unchecked="PreviewColorMapToggle_Unchecked"/>
-                                        </StackPanel>
-                                        <ToggleSwitch x:Name="ColorMapPreserveToggle" Header="Preserve brightness" IsOn="True" Toggled="ColorMapPreserveToggle_Toggled"/>
-                                    </StackPanel>-->
                                 </Grid>
                             </Expander>
                         </Border>
