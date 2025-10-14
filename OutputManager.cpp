@@ -11,81 +11,78 @@ OutputManager::~OutputManager()
 }
 
 HRESULT OutputManager::Initialize()
-{    winvert4::Log("OM.Initialize start");
-    m_duplicationThreads.clear();
+{
+    // Lightweight init: just enumerate output rectangles; no devices, no threads.
+    EnumerateOutputs_();
+    return S_OK;
+}
 
+void OutputManager::EnumerateOutputs_()
+{
+    if (m_outputsEnumerated) return;
+    winvert4::Log("OM: EnumerateOutputs start");
+    m_outputRects.clear();
     ::Microsoft::WRL::ComPtr<IDXGIFactory1> factory;
     HRESULT hr = CreateDXGIFactory1(IID_PPV_ARGS(&factory));
-    if (FAILED(hr)) { winvert4::Logf("OM.CreateDXGIFactory1 FAILED hr=0x%08X", hr); return hr; }
-    winvert4::Log("OM: factory created");
-
+    if (FAILED(hr)) { winvert4::Logf("OM.CreateDXGIFactory1 FAILED hr=0x%08X", hr); return; }
     for (UINT i = 0; ; ++i)
     {
         ::Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;
         HRESULT hrEnumA = factory->EnumAdapters1(i, &adapter);
-        if (hrEnumA == DXGI_ERROR_NOT_FOUND)
-        {
-            break; // No more adapters
-        }
-        if (FAILED(hrEnumA))
-        {
-            winvert4::Logf("OM: EnumAdapters1(%u) failed hr=0x%08X", i, hrEnumA);
-            continue;
-        }
-
-        DXGI_ADAPTER_DESC1 adesc{};
-        adapter->GetDesc1(&adesc);
-        winvert4::Logf("OM: Adapter[%u] LUID=%08X:%08X VendorId=%u DeviceId=%u Flags=0x%08X",
-            i, adesc.AdapterLuid.HighPart, adesc.AdapterLuid.LowPart, adesc.VendorId, adesc.DeviceId, adesc.Flags);
-
+        if (hrEnumA == DXGI_ERROR_NOT_FOUND) break;
+        if (FAILED(hrEnumA)) continue;
         for (UINT j = 0; ; ++j)
         {
             ::Microsoft::WRL::ComPtr<IDXGIOutput> output;
             HRESULT hrEnumO = adapter->EnumOutputs(j, &output);
-            if (hrEnumO == DXGI_ERROR_NOT_FOUND)
-            {
-                break; // No more outputs for this adapter
-            }
-            if (FAILED(hrEnumO))
-            {
-                winvert4::Logf("OM: EnumOutputs(%u) failed hr=0x%08X", j, hrEnumO);
-                continue;
-            }
-
+            if (hrEnumO == DXGI_ERROR_NOT_FOUND) break;
+            if (FAILED(hrEnumO)) continue;
             ::Microsoft::WRL::ComPtr<IDXGIOutput1> output1;
-            hr = output.As(&output1);
-            if (FAILED(hr))
-            {
-                winvert4::Logf("OM: output.As(Output1) failed hr=0x%08X", hr);
-                continue;
-            }
+            if (FAILED(output.As(&output1))) continue;
+            DXGI_OUTPUT_DESC outputDesc{};
+            if (FAILED(output1->GetDesc(&outputDesc))) continue;
+            m_outputRects.push_back(outputDesc.DesktopCoordinates);
+        }
+    }
+    m_outputsEnumerated = true;
+    winvert4::Logf("OM: EnumerateOutputs done; %zu outputs", m_outputRects.size());
+}
 
-            DXGI_OUTPUT_DESC outputDesc;
-            hr = output1->GetDesc(&outputDesc);
-            if (FAILED(hr))
-            {
-                winvert4::Logf("OM: GetDesc failed hr=0x%08X", hr);
-                continue;
-            }
-
+void OutputManager::EnsureThreadsCreated_()
+{
+    if (!m_duplicationThreads.empty()) return;
+    winvert4::Log("OM: creating duplication threads on demand");
+    ::Microsoft::WRL::ComPtr<IDXGIFactory1> factory;
+    HRESULT hr = CreateDXGIFactory1(IID_PPV_ARGS(&factory));
+    if (FAILED(hr)) { winvert4::Logf("OM.CreateDXGIFactory1 FAILED hr=0x%08X", hr); return; }
+    for (UINT i = 0; ; ++i)
+    {
+        ::Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;
+        HRESULT hrEnumA = factory->EnumAdapters1(i, &adapter);
+        if (hrEnumA == DXGI_ERROR_NOT_FOUND) break;
+        if (FAILED(hrEnumA)) continue;
+        for (UINT j = 0; ; ++j)
+        {
+            ::Microsoft::WRL::ComPtr<IDXGIOutput> output;
+            HRESULT hrEnumO = adapter->EnumOutputs(j, &output);
+            if (hrEnumO == DXGI_ERROR_NOT_FOUND) break;
+            if (FAILED(hrEnumO)) continue;
+            ::Microsoft::WRL::ComPtr<IDXGIOutput1> output1;
+            if (FAILED(output.As(&output1))) continue;
+            DXGI_OUTPUT_DESC outputDesc{};
+            if (FAILED(output1->GetDesc(&outputDesc))) continue;
             std::wstring deviceName = outputDesc.DeviceName;
-            winvert4::Logf("OM: Output[%u] name=%ls rect=(%ld,%ld,%ld,%ld)", j, deviceName.c_str(),
-                outputDesc.DesktopCoordinates.left, outputDesc.DesktopCoordinates.top,
-                outputDesc.DesktopCoordinates.right, outputDesc.DesktopCoordinates.bottom);
             auto thread = std::make_unique<DuplicationThread>(adapter.Get(), output1.Get());
-            winvert4::Logf("OM: created DuplicationThread %p", (void*)thread.get());
             thread->Run();
-            winvert4::Log("OM: started thread");
             m_duplicationThreads[deviceName] = std::move(thread);
         }
     }
-
-    winvert4::Log("OM.Initialize done");
-    return S_OK;
 }
 
 DuplicationThread* OutputManager::GetThreadForRect(const RECT& rc)
 {
+    // Lazily create threads when the first effect window is shown
+    EnsureThreadsCreated_();
     DuplicationThread* bestThread = nullptr;
     LONG bestArea = 0;
 
@@ -119,13 +116,29 @@ DuplicationThread* OutputManager::GetThreadForRect(const RECT& rc)
 void OutputManager::GetIntersectingRects(const RECT& rc, std::vector<RECT>& outRects)
 {
     outRects.clear();
-    for (auto const& [key, val] : m_duplicationThreads)
+    if (!m_duplicationThreads.empty())
     {
-        const RECT& outputRect = val->GetOutputRect();
-        RECT intersection{};
-        if (IntersectRect(&intersection, &rc, &outputRect))
+        for (auto const& [key, val] : m_duplicationThreads)
         {
-            outRects.push_back(intersection);
+            const RECT& outputRect = val->GetOutputRect();
+            RECT intersection{};
+            if (IntersectRect(&intersection, &rc, &outputRect))
+            {
+                outRects.push_back(intersection);
+            }
+        }
+    }
+    else
+    {
+        // Use lightweight enumerated output rects
+        if (!m_outputsEnumerated) EnumerateOutputs_();
+        for (auto const& rOut : m_outputRects)
+        {
+            RECT intersection{};
+            if (IntersectRect(&intersection, &rc, &rOut))
+            {
+                outRects.push_back(intersection);
+            }
         }
     }
     if (outRects.empty())

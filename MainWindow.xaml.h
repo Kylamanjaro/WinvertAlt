@@ -38,6 +38,7 @@ namespace winrt::Winvert4::implementation
         void RebindInvertHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void RebindFilterHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void RebindRemoveHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void RunAtStartupToggle_Toggled(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void SelectionColorPicker_ColorChanged(winrt::Microsoft::UI::Xaml::Controls::ColorPicker const&, winrt::Microsoft::UI::Xaml::Controls::ColorChangedEventArgs const&);
         void SelectionColorEnable_Toggled(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void FavoriteFilterComboBox_SelectionChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
@@ -216,6 +217,7 @@ namespace winrt::Winvert4::implementation
         void UpdateHotkeyText(winrt::Microsoft::UI::Xaml::Controls::TextBox const& textBox, UINT mod, UINT vk);
         int SelectedTabIndex();
         HWND SelectedWindowHwnd();
+        winrt::Windows::Foundation::IAsyncAction InitStartupToggleAsync();
         void ApplyGlobalColorMapsToSettings(EffectSettings& settings);
         // Apply current or provided settings to the primary + any extra windows for a tab index
         void UpdateSettingsForGroup(int idx);

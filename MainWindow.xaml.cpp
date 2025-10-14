@@ -146,8 +146,8 @@ namespace winrt::Winvert4::implementation
         winvert4::Logf("MainWindow: got HWND=%p", (void*)m_mainHwnd);
 
         m_outputManager = std::make_unique<OutputManager>();
-        HRESULT hrOM = m_outputManager->Initialize();
-        winvert4::Logf("MainWindow: OutputManager initialized hr=0x%08X", hrOM);
+        // Defer OutputManager thread/device creation until first region is created.
+        // Lightweight enumeration will happen on-demand when computing monitor splits.
 
         // TODO: Load settings from a file
         EnumerateMonitors();
@@ -170,6 +170,11 @@ namespace winrt::Winvert4::implementation
         SetWindowSubclass(m_mainHwnd, &MainWindow::WindowSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
 
         RegisterAllHotkeys();
+
+        // Initialize run-at-startup toggle state
+        {
+            auto __ = InitStartupToggleAsync();
+        }
 
         // Populate default filter presets if none exist yet
         if (m_savedFilters.empty())
@@ -3240,3 +3245,56 @@ void winrt::Winvert4::implementation::MainWindow::PreviewColorMapToggle_Unchecke
     SetHiddenForGroup(idx, true);
 }
 
+    winrt::Windows::Foundation::IAsyncAction winrt::Winvert4::implementation::MainWindow::InitStartupToggleAsync()
+    {
+        using winrt::Windows::ApplicationModel::StartupTask;
+        using winrt::Windows::ApplicationModel::StartupTaskState;
+        try
+        {
+            auto task = co_await StartupTask::GetAsync(L"Winvert4Startup");
+            auto state = task.State();
+            bool isOn = (state == StartupTaskState::Enabled || state == StartupTaskState::EnabledByPolicy);
+            bool canToggle = (state != StartupTaskState::DisabledByPolicy);
+            auto dq = DispatcherQueue();
+            dq.TryEnqueue([this, isOn, canToggle]()
+            {
+                if (auto t = RunAtStartupToggle()) { t.IsOn(isOn); t.IsEnabled(canToggle); }
+            });
+        }
+        catch (...) { /* ignore if manifest not present while developing */ }
+        co_return;
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::RunAtStartupToggle_Toggled(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        using winrt::Windows::ApplicationModel::StartupTask;
+        using winrt::Windows::ApplicationModel::StartupTaskState;
+        auto toggle = RunAtStartupToggle();
+        if (!toggle) return;
+
+        auto weakThis = get_weak();
+        auto _ = [weakThis]() -> winrt::Windows::Foundation::IAsyncAction
+        {
+            if (auto self = weakThis.get())
+            {
+                auto toggle2 = self->RunAtStartupToggle();
+                bool wantEnable = toggle2 && toggle2.IsOn();
+                try
+                {
+                    auto task = co_await StartupTask::GetAsync(L"Winvert4Startup");
+                    if (wantEnable)
+                    {
+                        auto res = co_await task.RequestEnableAsync();
+                        bool isOn = (res == StartupTaskState::Enabled || res == StartupTaskState::EnabledByPolicy);
+                        self->DispatcherQueue().TryEnqueue([self, isOn]() { if (auto t = self->RunAtStartupToggle()) t.IsOn(isOn); });
+                    }
+                    else
+                    {
+                        task.Disable();
+                    }
+                }
+                catch (...) { /* ignore */ }
+            }
+            co_return;
+        }();
+    }

@@ -240,6 +240,7 @@
                                     <TextBlock Text="Hotkeys" FontWeight="SemiBold"/>
                                 </Expander.Header>
                                 <StackPanel Spacing="8" Padding="8,4,0,8">
+                                    <ToggleSwitch x:Name="RunAtStartupToggle" Header="Run at startup" Toggled="RunAtStartupToggle_Toggled"/>
                                     <Grid ColumnSpacing="10" RowSpacing="5">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>
