@@ -220,6 +220,7 @@ namespace winrt::Winvert4::implementation
         int SelectedTabIndex();
         HWND SelectedWindowHwnd();
         winrt::Windows::Foundation::IAsyncAction InitStartupToggleAsync();
+        void ApplySettingsPageStateFromModel();
         void ApplyGlobalColorMapsToSettings(EffectSettings& settings);
         // Apply current or provided settings to the primary + any extra windows for a tab index
         void UpdateSettingsForGroup(int idx);

@@ -397,7 +397,7 @@
                                         <ColorPicker x:Name="ColorMapPicker" ColorSpectrumShape="Ring" IsAlphaEnabled="False" ColorChanged="ColorMapPicker_ColorChanged"/>
                                         <ToggleSwitch x:Name="ColorMapPreserveToggle" Header="Preserve brightness" IsOn="True" Toggled="ColorMapPreserveToggle_Toggled"/>
                                     </StackPanel>
-                                    
+
 
                                     <!-- Header moved into the first row inside the scroll list for alignment -->
 

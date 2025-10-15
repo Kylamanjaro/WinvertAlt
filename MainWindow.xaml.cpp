@@ -292,7 +292,7 @@ namespace winrt::Winvert4::implementation
         }
 
         m_isAppInitialized = true;
-        m_isSavingEnabled = true; // enable persistence after initial UI wiring
+        // Do not enable saving on startup; only enable after user opens Settings
 
         // Do not start selection automatically. The global hotkey will start
         // the operation (similar to Snipping Tool) after app launch.
@@ -478,6 +478,10 @@ namespace winrt::Winvert4::implementation
                 }
             }
         }
+        // Ensure all settings-page toggles reflect saved state when page is visible
+        ApplySettingsPageStateFromModel();
+        // From this point on, user is interacting with Settings; enable saves
+        m_isSavingEnabled = true;
         RefreshColorMapList();
     }
 
@@ -823,6 +827,89 @@ namespace winrt::Winvert4::implementation
         float co = 0.5f * (1.0f - contrast);
         float brightness = clampf(offAvg - co, -1.0f, 1.0f);
 
+        // Attempt to infer hue rotation angle by factoring out contrast, temp/tint scaling, and saturation
+        auto safe_div = [](float v, float by){ return (fabs(by) < 1e-6f) ? v : (v / by); };
+        // Build 3x3 from mat
+        float M[9] = { A00, A01, A02, A10, A11, A12, A20, A21, A22 };
+        // Recreate temp/tint scales from inferred t/ti
+        float rScaleI = 1.0f + 0.15f * t - 0.05f * ti;
+        float gScaleI = 1.0f + 0.10f * ti;
+        float bScaleI = 1.0f - 0.15f * t - 0.05f * ti;
+        // Remove contrast (scalar), then remove right-side scale (columns scaled)
+        float invC = (fabs(contrast) < 1e-6f) ? 1.0f : (1.0f / contrast);
+        float invScl[3] = {
+            (fabs(rScaleI) < 1e-6f) ? 1.0f : (1.0f / rScaleI),
+            (fabs(gScaleI) < 1e-6f) ? 1.0f : (1.0f / gScaleI),
+            (fabs(bScaleI) < 1e-6f) ? 1.0f : (1.0f / bScaleI)
+        };
+        float M1[9]; // = (1/c) * M * invScl
+        for (int r = 0; r < 3; ++r)
+        {
+            for (int c3 = 0; c3 < 3; ++c3)
+            {
+                M1[r*3 + c3] = invC * M[r*3 + c3] * invScl[c3];
+            }
+        }
+        // Recreate saturation matrix at inferred sat
+        float S[9];
+        {
+            float sLoc = sat;
+            S[0] = (1 - sLoc) * Lr + sLoc;  S[1] = (1 - sLoc) * Lg;        S[2] = (1 - sLoc) * Lb;
+            S[3] = (1 - sLoc) * Lr;         S[4] = (1 - sLoc) * Lg + sLoc; S[5] = (1 - sLoc) * Lb;
+            S[6] = (1 - sLoc) * Lr;         S[7] = (1 - sLoc) * Lg;        S[8] = (1 - sLoc) * Lb + sLoc;
+        }
+        auto det3 = [](const float m[9]){
+            return m[0]*(m[4]*m[8]-m[5]*m[7]) - m[1]*(m[3]*m[8]-m[5]*m[6]) + m[2]*(m[3]*m[7]-m[4]*m[6]);
+        };
+        float invS[9];
+        {
+            float d = det3(S);
+            if (fabs(d) < 1e-6f) { invS[0]=1; invS[1]=invS[2]=invS[3]=0; invS[4]=1; invS[5]=invS[6]=invS[7]=0; invS[8]=1; }
+            else {
+                float id = 1.0f/d;
+                invS[0] =  (S[4]*S[8]-S[5]*S[7]) * id;
+                invS[1] = -(S[1]*S[8]-S[2]*S[7]) * id;
+                invS[2] =  (S[1]*S[5]-S[2]*S[4]) * id;
+                invS[3] = -(S[3]*S[8]-S[5]*S[6]) * id;
+                invS[4] =  (S[0]*S[8]-S[2]*S[6]) * id;
+                invS[5] = -(S[0]*S[5]-S[2]*S[3]) * id;
+                invS[6] =  (S[3]*S[7]-S[4]*S[6]) * id;
+                invS[7] = -(S[0]*S[7]-S[1]*S[6]) * id;
+                invS[8] =  (S[0]*S[4]-S[1]*S[3]) * id;
+            }
+        }
+        // H = M1 * invS  (left-multiply M1 by invS on the right)
+        float H[9] = {0};
+        for (int r = 0; r < 3; ++r)
+            for (int c3 = 0; c3 < 3; ++c3)
+                for (int k = 0; k < 3; ++k)
+                    H[r*3 + c3] += M1[r*3 + k] * invS[k*3 + c3];
+
+        // Least-squares solve for cos(theta), sin(theta) from H's nine elements
+        const float a = 0.213f, bL = 0.715f, dB = 0.072f;
+        struct Row { int r; int c; float base; float Cc; float Sc; } rows[9] = {
+            {0,0, a,  (1-a),   -a},    {0,1, bL,   -bL,   -bL},   {0,2, dB,   -dB,  (1-dB)},
+            {1,0, a,   -a,   0.143f},  {1,1, bL, (1-bL), 0.140f}, {1,2, dB,   -dB,  -0.283f},
+            {2,0, a,   -a,  -0.787f},  {2,1, bL,   -bL,  0.715f}, {2,2, dB, (1-dB), 0.072f}
+        };
+        float Scc=0, Sss=0, Scs=0, Syc=0, Sys=0;
+        for (int i = 0; i < 9; ++i)
+        {
+            float hij = H[rows[i].r*3 + rows[i].c];
+            float y = hij - rows[i].base;
+            float Cc = rows[i].Cc;
+            float Sc = rows[i].Sc;
+            Scc += Cc*Cc; Sss += Sc*Sc; Scs += Cc*Sc; Syc += Cc*y; Sys += Sc*y;
+        }
+        float det = Scc*Sss - Scs*Scs;
+        float cH = 1.0f, sH = 0.0f; // default to 0 degrees
+        if (fabs(det) > 1e-6f)
+        {
+            cH = (Sss*Syc - Scs*Sys)/det;
+            sH = (Scc*Sys - Scs*Syc)/det;
+        }
+        float hueDeg = 180.0f / 3.1415926535f * atan2f(sH, cH);
+
         // Apply to model + UI with reentrancy guard
         m_isUpdatingSimpleUI = true;
         m_simpleBrightness = brightness;
@@ -830,7 +917,20 @@ namespace winrt::Winvert4::implementation
         m_simpleSaturation = sat;
         m_simpleTemperature = t;
         m_simpleTint = ti;
-        m_simpleHueAngle = 0.0f; // cannot reliably infer hue from arbitrary matrix
+        // Accept hue estimate if H is close to the ideal hue matrix
+        {
+            // Rebuild ideal hue from estimated angle
+            float rad = 3.1415926535f * hueDeg / 180.0f;
+            float cHr = cosf(rad), sHr = sinf(rad);
+            float Ht[9];
+            Ht[0] = a + cHr * (1 - a) + sHr * (-a);      Ht[1] = bL + cHr * (-bL) + sHr * (-bL);   Ht[2]  = dB + cHr * (-dB) + sHr * (1 - dB);
+            Ht[3] = a + cHr * (-a) + sHr * (0.143f);     Ht[4] = bL + cHr * (1 - bL) + sHr * (0.140f); Ht[5]  = dB + cHr * (-dB) + sHr * (-0.283f);
+            Ht[6] = a + cHr * (-a) + sHr * (-0.787f);    Ht[7] = bL + cHr * (-bL) + sHr * (0.715f);  Ht[8]  = dB + cHr * (1 - dB) + sHr * (0.072f);
+            float err = 0.0f;
+            for (int i = 0; i < 9; ++i) err += fabs(H[i] - Ht[i]);
+            err /= 9.0f;
+            m_simpleHueAngle = (err < 0.05f) ? hueDeg : 0.0f;
+        }
 
         if (auto s = BrightnessSlider()) s.Value(m_simpleBrightness);
         if (auto s = ContrastSlider())   s.Value(m_simpleContrast);
@@ -1628,6 +1728,24 @@ namespace winrt::Winvert4::implementation
             auto ts = root.FindName(L"ColorMapPreserveToggle").try_as<Controls::ToggleSwitch>();
             if (ts) ts.IsOn(current.colorMapPreserveBrightness);
         }
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::ApplySettingsPageStateFromModel()
+    {
+        // Selection color toggle + picker
+        if (auto tSel = SelectionColorEnableToggle()) tSel.IsOn(m_useCustomSelectionColor);
+        if (auto cpSel = SelectionColorPicker()) cpSel.IsEnabled(m_useCustomSelectionColor);
+        // FPS toggle in settings card
+        if (auto tFps = ShowFpsToggle()) tFps.IsOn(m_showFpsOverlay);
+        // Brightness protection delay + luma weights and color map preserve toggle
+        if (auto root = this->Content().try_as<FrameworkElement>())
+        {
+            if (auto nb = root.FindName(L"BrightnessDelayNumberBox").try_as<Controls::NumberBox>()) nb.Value(m_brightnessDelayFrames);
+            if (auto ts = root.FindName(L"ColorMapPreserveToggle").try_as<Controls::ToggleSwitch>()) ts.IsOn(m_colorMapPreserveToggleState);
+        }
+        LumaRNumberBox().Value(m_lumaWeights[0]);
+        LumaGNumberBox().Value(m_lumaWeights[1]);
+        LumaBNumberBox().Value(m_lumaWeights[2]);
     }
 
     void winrt::Winvert4::implementation::MainWindow::SetWindowSize(int width, int height)
@@ -2882,21 +3000,26 @@ void winrt::Winvert4::implementation::MainWindow::LoadAppState()
             // Robust fallback: accept FN/FM/FO sequences even outside FILTERS= blocks
             else if (line.rfind(L"FN=", 0) == 0)
             {
-                SavedFilter sf{}; sf.isBuiltin = false; sf.name = line.substr(3);
+                auto posBefore = ifs.tellg();
                 std::wstring fm, fo;
+                bool ok = false; SavedFilter sf{}; sf.isBuiltin = false; sf.name = line.substr(3);
                 if (std::getline(ifs, fm) && std::getline(ifs, fo))
                 {
-                    if (fm.rfind(L"FM=", 0) == 0)
+                    if (fm.rfind(L"FM=", 0) == 0 && fo.rfind(L"FO=", 0) == 0)
                     {
+                        ok = true;
                         std::wstring mpart = fm.substr(3); int mi = 0; size_t last = 0;
                         while (mi < 16 && last <= mpart.size()) { size_t comma = mpart.find(L',', last); std::wstring tok = mpart.substr(last, (comma == std::wstring::npos) ? std::wstring::npos : (comma - last)); if (!tok.empty()) { try { sf.mat[mi] = std::stof(tok); } catch (...) {} } ++mi; if (comma == std::wstring::npos) break; last = comma + 1; }
-                    }
-                    if (fo.rfind(L"FO=", 0) == 0)
-                    {
-                        std::wstring opart = fo.substr(3); int oi = 0; size_t last = 0;
+                        std::wstring opart = fo.substr(3); int oi = 0; last = 0;
                         while (oi < 4 && last <= opart.size()) { size_t comma = opart.find(L',', last); std::wstring tok = opart.substr(last, (comma == std::wstring::npos) ? std::wstring::npos : (comma - last)); if (!tok.empty()) { try { sf.offset[oi] = std::stof(tok); } catch (...) {} } ++oi; if (comma == std::wstring::npos) break; last = comma + 1; }
+                        m_savedFilters.push_back(sf);
                     }
-                    m_savedFilters.push_back(sf);
+                }
+                if (!ok)
+                {
+                    // Rewind to before FM/FO reads so we don't consume unrelated keys
+                    ifs.clear();
+                    ifs.seekg(posBefore);
                 }
             }
             else if (line.rfind(L"COLORMAPS=", 0) == 0)
@@ -2920,8 +3043,7 @@ void winrt::Winvert4::implementation::MainWindow::LoadAppState()
         m_useCustomSelectionColor = selClrEn;
         if (auto t = ShowFpsToggle()) t.IsOn(m_showFpsOverlay);
         // Also reflect selection color enable toggle + picker enabled state
-        if (auto tSel = SelectionColorEnableToggle()) tSel.IsOn(m_useCustomSelectionColor);
-        if (auto cpSel = SelectionColorPicker()) cpSel.IsEnabled(m_useCustomSelectionColor);
+        ApplySettingsPageStateFromModel();
         if (hasSelClr)
         {
             winrt::Windows::UI::Color c{}; c.A = 255; c.R = static_cast<uint8_t>(selR); c.G = static_cast<uint8_t>(selG); c.B = static_cast<uint8_t>(selB);
