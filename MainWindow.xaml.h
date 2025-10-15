@@ -56,6 +56,7 @@ namespace winrt::Winvert4::implementation
         void PreviewColorMapToggle_Unchecked(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void ColorMapSampleButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void ColorMapPreserveToggle_Toggled(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void BrightnessResetButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void PreviewFilterToggle_Checked(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void PreviewFilterToggle_Unchecked(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
 
@@ -152,6 +153,7 @@ namespace winrt::Winvert4::implementation
         bool m_useCustomSelectionColor{ false };
         bool m_controlPanelShownYet{ false };
         int  m_brightnessDelayFrames{ 0 }; // default 0 frames
+        bool m_colorMapPreserveToggleState{ true }; // persisted UI state for settings toggle
 
         // --- Hotkeys ---
         enum class RebindingState { None, Invert, Filter, Remove };

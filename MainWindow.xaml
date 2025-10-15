@@ -199,7 +199,14 @@
                                 </Expander.Header>
                                 <StackPanel Spacing="8" Padding="8,4,0,8" HorizontalAlignment="Left">
                                     <TextBlock Text="Trigger delay (frames)" Margin="0,0,0,4"/>
-                                    <NumberBox x:Name="BrightnessDelayNumberBox" Minimum="0" Maximum="1000" SmallChange="1" LargeChange="5" SpinButtonPlacementMode="Compact" ValueChanged="BrightnessDelay_ValueChanged"/>
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <NumberBox Grid.Column="0" x:Name="BrightnessDelayNumberBox" Minimum="0" Maximum="1000" SmallChange="1" LargeChange="5" SpinButtonPlacementMode="Compact" ValueChanged="BrightnessDelay_ValueChanged"/>
+                                        <Button Grid.Column="1" x:Name="BrightnessResetButton" Content="Reset defaults" Click="BrightnessResetButton_Click"/>
+                                    </Grid>
                                     <TextBlock Text="Luminance Weights" Margin="0,12,0,0"/>
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <NumberBox x:Name="LumaRNumberBox" Header="R" Minimum="0" Maximum="1" SmallChange="0.01" LargeChange="0.1" SpinButtonPlacementMode="Compact" ValueChanged="LumaWeight_ValueChanged"/>

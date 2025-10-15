@@ -2784,6 +2784,7 @@ void winrt::Winvert4::implementation::MainWindow::SaveAppState()
         ofs << L"SELCLR=" << (int)GetRValue(m_selectionColor) << L"," << (int)GetGValue(m_selectionColor) << L"," << (int)GetBValue(m_selectionColor) << L"\n";
         ofs << L"BRIGHTDELAY=" << m_brightnessDelayFrames << L"\n";
         ofs << L"LUMA=" << std::fixed << std::setprecision(6) << m_lumaWeights[0] << L"," << m_lumaWeights[1] << L"," << m_lumaWeights[2] << L"\n";
+        ofs << L"CMPRES=" << (m_colorMapPreserveToggleState ? 1 : 0) << L"\n";
         ofs << L"HKI=" << m_hotkeyInvertMod << L"," << m_hotkeyInvertVk << L"\n";
         ofs << L"HKF=" << m_hotkeyFilterMod << L"," << m_hotkeyFilterVk << L"\n";
         ofs << L"HKR=" << m_hotkeyRemoveMod << L"," << m_hotkeyRemoveVk << L"\n";
@@ -2851,6 +2852,7 @@ void winrt::Winvert4::implementation::MainWindow::LoadAppState()
                 std::wstring rest = line.substr(5); int idx = 0; size_t last = 0;
                 while (idx < 3 && last <= rest.size()) { size_t comma = rest.find(L',', last); std::wstring tok = rest.substr(last, (comma == std::wstring::npos) ? std::wstring::npos : (comma - last)); if (!tok.empty()) { try { m_lumaWeights[idx] = std::stof(tok); } catch (...) {} } ++idx; if (comma == std::wstring::npos) break; last = comma + 1; }
             }
+            else if (line.rfind(L"CMPRES=", 0) == 0) { m_colorMapPreserveToggleState = (line.size() > 7 && line[7] == L'1'); }
             else if (line.rfind(L"HKI=", 0) == 0)
             {
                 std::wstring rest = line.substr(4); size_t comma = rest.find(L','); if (comma != std::wstring::npos) { try { m_hotkeyInvertMod = static_cast<UINT>(std::stoul(rest.substr(0, comma))); } catch (...) {} try { m_hotkeyInvertVk = static_cast<UINT>(std::stoul(rest.substr(comma + 1))); } catch (...) {} }
@@ -2877,6 +2879,26 @@ void winrt::Winvert4::implementation::MainWindow::LoadAppState()
                     m_savedFilters.push_back(sf);
                 }
             }
+            // Robust fallback: accept FN/FM/FO sequences even outside FILTERS= blocks
+            else if (line.rfind(L"FN=", 0) == 0)
+            {
+                SavedFilter sf{}; sf.isBuiltin = false; sf.name = line.substr(3);
+                std::wstring fm, fo;
+                if (std::getline(ifs, fm) && std::getline(ifs, fo))
+                {
+                    if (fm.rfind(L"FM=", 0) == 0)
+                    {
+                        std::wstring mpart = fm.substr(3); int mi = 0; size_t last = 0;
+                        while (mi < 16 && last <= mpart.size()) { size_t comma = mpart.find(L',', last); std::wstring tok = mpart.substr(last, (comma == std::wstring::npos) ? std::wstring::npos : (comma - last)); if (!tok.empty()) { try { sf.mat[mi] = std::stof(tok); } catch (...) {} } ++mi; if (comma == std::wstring::npos) break; last = comma + 1; }
+                    }
+                    if (fo.rfind(L"FO=", 0) == 0)
+                    {
+                        std::wstring opart = fo.substr(3); int oi = 0; size_t last = 0;
+                        while (oi < 4 && last <= opart.size()) { size_t comma = opart.find(L',', last); std::wstring tok = opart.substr(last, (comma == std::wstring::npos) ? std::wstring::npos : (comma - last)); if (!tok.empty()) { try { sf.offset[oi] = std::stof(tok); } catch (...) {} } ++oi; if (comma == std::wstring::npos) break; last = comma + 1; }
+                    }
+                    m_savedFilters.push_back(sf);
+                }
+            }
             else if (line.rfind(L"COLORMAPS=", 0) == 0)
             {
                 int m = 0; try { m = std::stoi(line.substr(10)); } catch (...) { m = 0; }
@@ -2897,11 +2919,18 @@ void winrt::Winvert4::implementation::MainWindow::LoadAppState()
         // Apply loaded values to UI
         m_useCustomSelectionColor = selClrEn;
         if (auto t = ShowFpsToggle()) t.IsOn(m_showFpsOverlay);
+        // Also reflect selection color enable toggle + picker enabled state
+        if (auto tSel = SelectionColorEnableToggle()) tSel.IsOn(m_useCustomSelectionColor);
+        if (auto cpSel = SelectionColorPicker()) cpSel.IsEnabled(m_useCustomSelectionColor);
         if (hasSelClr)
         {
             winrt::Windows::UI::Color c{}; c.A = 255; c.R = static_cast<uint8_t>(selR); c.G = static_cast<uint8_t>(selG); c.B = static_cast<uint8_t>(selB);
             if (auto picker = SelectionColorPicker()) picker.Color(c);
             m_selectionColor = RGB(selR, selG, selB);
+        }
+        // Ensure simple sliders/matrix start at identity on launch
+        {
+            float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
         }
         // Apply hotkeys and favorites UI
         RegisterAllHotkeys();
@@ -2910,6 +2939,8 @@ void winrt::Winvert4::implementation::MainWindow::LoadAppState()
         {
             auto fav = root.FindName(L"FavoriteFilterComboBox").try_as<Controls::ComboBox>(); if (fav) fav.SelectedIndex(m_favoriteFilterIndex);
             auto nb = root.FindName(L"BrightnessDelayNumberBox").try_as<Controls::NumberBox>(); if (nb) nb.Value(m_brightnessDelayFrames);
+            // Apply saved settings-page toggle state for color map preserve
+            if (auto ts = root.FindName(L"ColorMapPreserveToggle").try_as<Controls::ToggleSwitch>()) ts.IsOn(m_colorMapPreserveToggleState);
         }
         LumaRNumberBox().Value(m_lumaWeights[0]);
         LumaGNumberBox().Value(m_lumaWeights[1]);
@@ -3193,18 +3224,41 @@ void winrt::Winvert4::implementation::MainWindow::PreviewColorMapButton_Click(wi
     void winrt::Winvert4::implementation::MainWindow::ColorMapPreserveToggle_Toggled(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         int idx = SelectedTabIndex();
-        if (idx < 0 || idx >= static_cast<int>(m_windowSettings.size())) return;
         Controls::ToggleSwitch toggle{ nullptr };
         if (auto root = this->Content().try_as<FrameworkElement>())
         {
             toggle = root.FindName(L"ColorMapPreserveToggle").try_as<Controls::ToggleSwitch>();
         }
         if (!toggle) return;
-        m_windowSettings[idx].colorMapPreserveBrightness = toggle.IsOn();
-        if (m_windowSettings[idx].isColorMappingEnabled)
+        m_colorMapPreserveToggleState = toggle.IsOn();
+        if (idx >= 0 && idx < static_cast<int>(m_windowSettings.size()))
         {
-            ApplyGlobalColorMapsToSettings(m_windowSettings[idx]);
-            UpdateSettingsForGroup(idx);
+            m_windowSettings[idx].colorMapPreserveBrightness = toggle.IsOn();
+            if (m_windowSettings[idx].isColorMappingEnabled)
+            {
+                ApplyGlobalColorMapsToSettings(m_windowSettings[idx]);
+                UpdateSettingsForGroup(idx);
+            }
+        }
+        SaveAppState();
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::BrightnessResetButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        m_brightnessDelayFrames = 0;
+        m_lumaWeights[0] = 0.2126f; m_lumaWeights[1] = 0.7152f; m_lumaWeights[2] = 0.0722f;
+        if (auto root = this->Content().try_as<FrameworkElement>())
+        {
+            if (auto nb = root.FindName(L"BrightnessDelayNumberBox").try_as<Controls::NumberBox>()) nb.Value(m_brightnessDelayFrames);
+        }
+        LumaRNumberBox().Value(m_lumaWeights[0]);
+        LumaGNumberBox().Value(m_lumaWeights[1]);
+        LumaBNumberBox().Value(m_lumaWeights[2]);
+        for (size_t i = 0; i < m_windowSettings.size(); ++i)
+        {
+            m_windowSettings[i].brightnessProtectionDelayFrames = m_brightnessDelayFrames;
+            memcpy(m_windowSettings[i].lumaWeights, m_lumaWeights, sizeof(m_lumaWeights));
+            UpdateSettingsForGroup(static_cast<int>(i));
         }
         SaveAppState();
     }
