@@ -1,4 +1,4 @@
-
+﻿
 #include "pch.h"
 #include "MainWindow.xaml.h"
 #include "Log.h"
@@ -9,6 +9,7 @@
 #include <winrt/Microsoft.UI.Xaml.Shapes.h>
 #include <winrt/Windows.Storage.h>
 #include <winrt/Windows.ApplicationModel.h>
+#include <winrt/Windows.Data.Json.h>
 #include <gdiplus.h>
 #include <microsoft.ui.xaml.window.h>
 #include <algorithm>
@@ -258,7 +259,7 @@ namespace winrt::Winvert4::implementation
                 addHueRotate(L"Hue +180", 180.0f);
             }
 
-        // Load app state from blob file, then init saved filters UI
+        // Load app state from json file, then init saved filters UI
         LoadAppState();
         UpdateSavedFiltersCombo();
         UpdateFilterDropdown();
@@ -1142,14 +1143,21 @@ namespace winrt::Winvert4::implementation
         SaveAppState();
     }
 
-    void winrt::Winvert4::implementation::MainWindow::SelectionColorEnable_Toggled(IInspectable const&, RoutedEventArgs const&)
-    {
-        m_useCustomSelectionColor = SelectionColorEnableToggle().IsOn();
+void winrt::Winvert4::implementation::MainWindow::SelectionColorEnable_Toggled(IInspectable const&, RoutedEventArgs const&)
+{
+        bool isOn = SelectionColorEnableToggle().IsOn();
+        // Ignore programmatic wiring before user has opened Settings
+        if (!m_isSavingEnabled)
+        {
+            if (auto cp = SelectionColorPicker()) cp.IsEnabled(isOn);
+            return;
+        }
+        m_useCustomSelectionColor = isOn;
         if (auto cp = SelectionColorPicker()) cp.IsEnabled(m_useCustomSelectionColor);
         // Redraw selection overlay if active
         if (m_selectionHwnd) InvalidateRect(m_selectionHwnd, nullptr, FALSE);
         SaveAppState();
-    }
+}
 
     // --- Core Logic ---
     void winrt::Winvert4::implementation::MainWindow::RegisterAllHotkeys()
@@ -1598,6 +1606,7 @@ namespace winrt::Winvert4::implementation
         case WM_PAINT:
         {
             if (!self) break;
+            static bool s_loggedPaint = false;
 
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint(hwnd, &ps);
@@ -1650,6 +1659,15 @@ namespace winrt::Winvert4::implementation
                 graphics.DrawString(monitorText.c_str(), -1, &numFont, textRectF, &stringFormat, &textBrush);
             }
 
+            // Log custom border toggle/color on first paint of this overlay
+            if (!s_loggedPaint)
+            {
+                winvert4::Logf("SelectionWndProc WM_PAINT: selectionColorEnabled=%d color=%d,%d,%d",
+                    self->m_useCustomSelectionColor ? 1 : 0,
+                    (int)GetRValue(self->m_selectionColor), (int)GetGValue(self->m_selectionColor), (int)GetBValue(self->m_selectionColor));
+                s_loggedPaint = true;
+            }
+
             // 4. If dragging, draw the selection rectangle on top.
             if (self->m_isDragging)
             {
@@ -1684,6 +1702,7 @@ namespace winrt::Winvert4::implementation
                 self->m_selectionHwnd = nullptr;
                 winvert4::Log("MainWindow: selection overlay destroyed");
             }
+            { static bool s_loggedPaint = false; s_loggedPaint = false; }
             return 0;
         }
 
@@ -2887,51 +2906,47 @@ void winrt::Winvert4::implementation::MainWindow::SaveAppState()
 {
     if (!m_isSavingEnabled) { winvert4::Log("SaveAppState: suppressed (init)"); return; }
     using winrt::Windows::Storage::ApplicationData;
+    using winrt::Windows::Data::Json::JsonObject;
+    using winrt::Windows::Data::Json::JsonArray;
+    using winrt::Windows::Data::Json::JsonValue;
     try
     {
         auto folder = ApplicationData::Current().LocalFolder();
-        std::wstring path = std::wstring(folder.Path().c_str()) + L"\\appstate.blob";
-
-        winvert4::Logf("SaveAppState: path=%ls", path.c_str());
-        std::wofstream ofs(path, std::ios::trunc | std::ios::binary);
-        if (!ofs) { winvert4::Log("SaveAppState: open failed"); return; }
-        ofs.imbue(std::locale::classic());
-        ofs << L"V=1\n";
-        ofs << L"FPS=" << (m_showFpsOverlay ? 1 : 0) << L"\n";
-        ofs << L"SELCLREN=" << (m_useCustomSelectionColor ? 1 : 0) << L"\n";
-        ofs << L"SELCLR=" << (int)GetRValue(m_selectionColor) << L"," << (int)GetGValue(m_selectionColor) << L"," << (int)GetBValue(m_selectionColor) << L"\n";
-        ofs << L"BRIGHTDELAY=" << m_brightnessDelayFrames << L"\n";
-        ofs << L"LUMA=" << std::fixed << std::setprecision(6) << m_lumaWeights[0] << L"," << m_lumaWeights[1] << L"," << m_lumaWeights[2] << L"\n";
-        ofs << L"CMPRES=" << (m_colorMapPreserveToggleState ? 1 : 0) << L"\n";
-        ofs << L"HKI=" << m_hotkeyInvertMod << L"," << m_hotkeyInvertVk << L"\n";
-        ofs << L"HKF=" << m_hotkeyFilterMod << L"," << m_hotkeyFilterVk << L"\n";
-        ofs << L"HKR=" << m_hotkeyRemoveMod << L"," << m_hotkeyRemoveVk << L"\n";
-        ofs << L"FAV=" << m_favoriteFilterIndex << L"\n";
-
-        // Saved custom filters
-        int countCustom = 0; for (auto& f : m_savedFilters) if (!f.isBuiltin) ++countCustom;
-        ofs << L"FILTERS=" << countCustom << L"\n";
-        for (auto& f : m_savedFilters)
+        // First: write JSON settings
+        try
         {
-            if (f.isBuiltin) continue;
-            std::wstring safe = f.name;
-            for (auto& ch : safe) if (ch == L'\n' || ch == L'\r') ch = L' ';
-            ofs << L"FN=" << safe << L"\n";
-            ofs << L"FM=";
-            for (int i = 0; i < 16; ++i) { ofs << std::fixed << std::setprecision(6) << f.mat[i]; if (i != 15) ofs << L","; }
-            ofs << L"\nFO=";
-            for (int i = 0; i < 4; ++i) { ofs << std::fixed << std::setprecision(6) << f.offset[i]; if (i != 3) ofs << L","; }
-            ofs << L"\n";
+            std::wstring jsonPath = std::wstring(folder.Path().c_str()) + L"\\settings.json";
+            JsonObject root;
+            root.SetNamedValue(L"version", JsonValue::CreateNumberValue(1));
+            // Toggles
+            JsonObject toggles; toggles.SetNamedValue(L"showFps", JsonValue::CreateBooleanValue(m_showFpsOverlay));
+            toggles.SetNamedValue(L"selectionColorEnabled", JsonValue::CreateBooleanValue(m_useCustomSelectionColor));
+            toggles.SetNamedValue(L"colorMapPreserve", JsonValue::CreateBooleanValue(m_colorMapPreserveToggleState));
+            root.SetNamedValue(L"toggles", toggles);
+            // Selection color
+            JsonObject sel; sel.SetNamedValue(L"r", JsonValue::CreateNumberValue((int)GetRValue(m_selectionColor)));
+            sel.SetNamedValue(L"g", JsonValue::CreateNumberValue((int)GetGValue(m_selectionColor)));
+            sel.SetNamedValue(L"b", JsonValue::CreateNumberValue((int)GetBValue(m_selectionColor)));
+            root.SetNamedValue(L"selectionColor", sel);
+            // Brightness
+            JsonObject bright; bright.SetNamedValue(L"delayFrames", JsonValue::CreateNumberValue(m_brightnessDelayFrames));
+            JsonArray lw; lw.Append(JsonValue::CreateNumberValue(m_lumaWeights[0])); lw.Append(JsonValue::CreateNumberValue(m_lumaWeights[1])); lw.Append(JsonValue::CreateNumberValue(m_lumaWeights[2]));
+            bright.SetNamedValue(L"lumaWeights", lw); root.SetNamedValue(L"brightness", bright);
+            // Hotkeys
+            JsonObject hk; JsonObject i; i.SetNamedValue(L"mod", JsonValue::CreateNumberValue(m_hotkeyInvertMod)); i.SetNamedValue(L"vk", JsonValue::CreateNumberValue(m_hotkeyInvertVk));
+            JsonObject f; f.SetNamedValue(L"mod", JsonValue::CreateNumberValue(m_hotkeyFilterMod)); f.SetNamedValue(L"vk", JsonValue::CreateNumberValue(m_hotkeyFilterVk));
+            JsonObject r; r.SetNamedValue(L"mod", JsonValue::CreateNumberValue(m_hotkeyRemoveMod)); r.SetNamedValue(L"vk", JsonValue::CreateNumberValue(m_hotkeyRemoveVk));
+            hk.SetNamedValue(L"invert", i); hk.SetNamedValue(L"filter", f); hk.SetNamedValue(L"remove", r); root.SetNamedValue(L"hotkeys", hk);
+            root.SetNamedValue(L"favoriteFilterIndex", JsonValue::CreateNumberValue(m_favoriteFilterIndex));
+            // Saved filters (non-builtin)
+            JsonArray filters; for (auto& sf : m_savedFilters) { if (sf.isBuiltin) continue; JsonObject jf; jf.SetNamedValue(L"name", JsonValue::CreateStringValue(sf.name)); JsonArray jmat; for (int k=0;k<16;++k) jmat.Append(JsonValue::CreateNumberValue(sf.mat[k])); JsonArray joff; for (int k=0;k<4;++k) joff.Append(JsonValue::CreateNumberValue(sf.offset[k])); jf.SetNamedValue(L"mat", jmat); jf.SetNamedValue(L"offset", joff); filters.Append(jf);} root.SetNamedValue(L"savedFilters", filters);
+            // Color maps
+            JsonArray maps; for (auto& e : m_globalColorMaps) { JsonObject jm; jm.SetNamedValue(L"enabled", JsonValue::CreateBooleanValue(e.enabled)); JsonArray src; src.Append(JsonValue::CreateNumberValue(e.srcR)); src.Append(JsonValue::CreateNumberValue(e.srcG)); src.Append(JsonValue::CreateNumberValue(e.srcB)); jm.SetNamedValue(L"src", src); JsonArray dst; dst.Append(JsonValue::CreateNumberValue(e.dstR)); dst.Append(JsonValue::CreateNumberValue(e.dstG)); dst.Append(JsonValue::CreateNumberValue(e.dstB)); jm.SetNamedValue(L"dst", dst); jm.SetNamedValue(L"tolerance", JsonValue::CreateNumberValue(e.tolerance)); maps.Append(jm);} root.SetNamedValue(L"colorMaps", maps);
+            // Write
+            std::wofstream jfs(jsonPath, std::ios::trunc | std::ios::binary); if (jfs) { jfs.imbue(std::locale::classic()); jfs << root.Stringify().c_str(); }
         }
-
-        // Color maps
-        ofs << L"COLORMAPS=" << (int)m_globalColorMaps.size() << L"\n";
-        for (auto& e : m_globalColorMaps)
-        {
-            ofs << L"CM=" << (e.enabled ? 1 : 0) << L","
-                << (int)e.srcR << L"," << (int)e.srcG << L"," << (int)e.srcB << L","
-                << (int)e.dstR << L"," << (int)e.dstG << L"," << (int)e.dstB << L"," << e.tolerance << L"\n";
-        }
+        catch (...) {}
+        return;
     }
     catch (...) { }
 }
@@ -2939,137 +2954,98 @@ void winrt::Winvert4::implementation::MainWindow::SaveAppState()
 void winrt::Winvert4::implementation::MainWindow::LoadAppState()
 {
     using winrt::Windows::Storage::ApplicationData;
+    using winrt::Windows::Data::Json::JsonObject;
+    using winrt::Windows::Data::Json::JsonArray;
     try
     {
         auto folder = ApplicationData::Current().LocalFolder();
-        std::wstring path = std::wstring(folder.Path().c_str()) + L"\\appstate.blob";
-        winvert4::Logf("LoadAppState: path=%ls", path.c_str());
-        std::wifstream ifs(path, std::ios::binary);
-        if (!ifs) { winvert4::Log("LoadAppState: open failed"); return; }
-        ifs.imbue(std::locale::classic());
-        std::wstring line;
-        m_savedFilters.erase(std::remove_if(m_savedFilters.begin(), m_savedFilters.end(), [](const SavedFilter& f){ return !f.isBuiltin; }), m_savedFilters.end());
-        m_globalColorMaps.clear();
-
-        bool hasSelClr = false; int selR = 255, selG = 0, selB = 0; bool selClrEn = false;
-        while (std::getline(ifs, line))
+        // Try JSON first
+        try
         {
-            if (line.rfind(L"FPS=", 0) == 0) { m_showFpsOverlay = (line.size() > 4 && line[4] == L'1'); }
-            else if (line.rfind(L"SELCLREN=", 0) == 0) { selClrEn = (line.size() > 10 && line[10] == L'1'); }
-            else if (line.rfind(L"SELCLR=", 0) == 0)
+            std::wstring jsonPath = std::wstring(folder.Path().c_str()) + L"\\settings.json";
+            std::wifstream jfs(jsonPath, std::ios::binary);
+            if (jfs)
             {
-                std::wstring rest = line.substr(7);
-                int vals[3]{}; int idx = 0; size_t last = 0; size_t p2;
-                while ((p2 = rest.find(L',', last)) != std::wstring::npos && idx < 2) { vals[idx++] = _wtoi(rest.substr(last, p2 - last).c_str()); last = p2 + 1; }
-                if (last < rest.size()) vals[idx++] = _wtoi(rest.substr(last).c_str());
-                if (idx >= 3) { selR = vals[0] & 0xFF; selG = vals[1] & 0xFF; selB = vals[2] & 0xFF; hasSelClr = true; }
-            }
-            else if (line.rfind(L"BRIGHTDELAY=", 0) == 0) { try { m_brightnessDelayFrames = std::stoi(line.substr(12)); } catch (...) {} }
-            else if (line.rfind(L"LUMA=", 0) == 0)
-            {
-                std::wstring rest = line.substr(5); int idx = 0; size_t last = 0;
-                while (idx < 3 && last <= rest.size()) { size_t comma = rest.find(L',', last); std::wstring tok = rest.substr(last, (comma == std::wstring::npos) ? std::wstring::npos : (comma - last)); if (!tok.empty()) { try { m_lumaWeights[idx] = std::stof(tok); } catch (...) {} } ++idx; if (comma == std::wstring::npos) break; last = comma + 1; }
-            }
-            else if (line.rfind(L"CMPRES=", 0) == 0) { m_colorMapPreserveToggleState = (line.size() > 7 && line[7] == L'1'); }
-            else if (line.rfind(L"HKI=", 0) == 0)
-            {
-                std::wstring rest = line.substr(4); size_t comma = rest.find(L','); if (comma != std::wstring::npos) { try { m_hotkeyInvertMod = static_cast<UINT>(std::stoul(rest.substr(0, comma))); } catch (...) {} try { m_hotkeyInvertVk = static_cast<UINT>(std::stoul(rest.substr(comma + 1))); } catch (...) {} }
-            }
-            else if (line.rfind(L"HKF=", 0) == 0)
-            {
-                std::wstring rest = line.substr(4); size_t comma = rest.find(L','); if (comma != std::wstring::npos) { try { m_hotkeyFilterMod = static_cast<UINT>(std::stoul(rest.substr(0, comma))); } catch (...) {} try { m_hotkeyFilterVk = static_cast<UINT>(std::stoul(rest.substr(comma + 1))); } catch (...) {} }
-            }
-            else if (line.rfind(L"HKR=", 0) == 0)
-            {
-                std::wstring rest = line.substr(4); size_t comma = rest.find(L','); if (comma != std::wstring::npos) { try { m_hotkeyRemoveMod = static_cast<UINT>(std::stoul(rest.substr(0, comma))); } catch (...) {} try { m_hotkeyRemoveVk = static_cast<UINT>(std::stoul(rest.substr(comma + 1))); } catch (...) {} }
-            }
-            else if (line.rfind(L"FAV=", 0) == 0) { try { m_favoriteFilterIndex = std::stoi(line.substr(4)); } catch (...) {} }
-            else if (line.rfind(L"FILTERS=", 0) == 0)
-            {
-                int n = 0; try { n = std::stoi(line.substr(9)); } catch (...) { n = 0; }
-                for (int k = 0; k < n; ++k)
+                jfs.imbue(std::locale::classic());
+                std::wstringstream buf; buf << jfs.rdbuf();
+                JsonObject root;
+                if (JsonObject::TryParse(winrt::hstring(buf.str()), root))
                 {
-                    std::wstring fn, fm, fo;
-                    if (!std::getline(ifs, fn)) break; if (!std::getline(ifs, fm)) break; if (!std::getline(ifs, fo)) break;
-                    SavedFilter sf{}; sf.isBuiltin = false; if (fn.rfind(L"FN=", 0) == 0) sf.name = fn.substr(3);
-                    if (fm.rfind(L"FM=", 0) == 0) { std::wstring mpart = fm.substr(3); int mi = 0; size_t last = 0; while (mi < 16 && last <= mpart.size()) { size_t comma = mpart.find(L',', last); std::wstring tok = mpart.substr(last, (comma == std::wstring::npos) ? std::wstring::npos : (comma - last)); if (!tok.empty()) { try { sf.mat[mi] = std::stof(tok); } catch (...) {} } ++mi; if (comma == std::wstring::npos) break; last = comma + 1; } }
-                    if (fo.rfind(L"FO=", 0) == 0) { std::wstring opart = fo.substr(3); int oi = 0; size_t last = 0; while (oi < 4 && last <= opart.size()) { size_t comma = opart.find(L',', last); std::wstring tok = opart.substr(last, (comma == std::wstring::npos) ? std::wstring::npos : (comma - last)); if (!tok.empty()) { try { sf.offset[oi] = std::stof(tok); } catch (...) {} } ++oi; if (comma == std::wstring::npos) break; last = comma + 1; } }
-                    m_savedFilters.push_back(sf);
-                }
-            }
-            // Robust fallback: accept FN/FM/FO sequences even outside FILTERS= blocks
-            else if (line.rfind(L"FN=", 0) == 0)
-            {
-                auto posBefore = ifs.tellg();
-                std::wstring fm, fo;
-                bool ok = false; SavedFilter sf{}; sf.isBuiltin = false; sf.name = line.substr(3);
-                if (std::getline(ifs, fm) && std::getline(ifs, fo))
-                {
-                    if (fm.rfind(L"FM=", 0) == 0 && fo.rfind(L"FO=", 0) == 0)
-                    {
-                        ok = true;
-                        std::wstring mpart = fm.substr(3); int mi = 0; size_t last = 0;
-                        while (mi < 16 && last <= mpart.size()) { size_t comma = mpart.find(L',', last); std::wstring tok = mpart.substr(last, (comma == std::wstring::npos) ? std::wstring::npos : (comma - last)); if (!tok.empty()) { try { sf.mat[mi] = std::stof(tok); } catch (...) {} } ++mi; if (comma == std::wstring::npos) break; last = comma + 1; }
-                        std::wstring opart = fo.substr(3); int oi = 0; last = 0;
-                        while (oi < 4 && last <= opart.size()) { size_t comma = opart.find(L',', last); std::wstring tok = opart.substr(last, (comma == std::wstring::npos) ? std::wstring::npos : (comma - last)); if (!tok.empty()) { try { sf.offset[oi] = std::stof(tok); } catch (...) {} } ++oi; if (comma == std::wstring::npos) break; last = comma + 1; }
-                        m_savedFilters.push_back(sf);
+                    // Toggles (robust to bool or numeric 0/1)
+                    if (auto v = root.TryLookup(L"toggles")) if (auto o = v.try_as<JsonObject>()) {
+                        auto readBool = [](winrt::Windows::Data::Json::IJsonValue const& jv, bool& out){
+                            using namespace winrt::Windows::Data::Json;
+                            if (!jv) return;
+                            switch (jv.ValueType())
+                            {
+                                case JsonValueType::Boolean: out = jv.GetBoolean(); break;
+                                case JsonValueType::Number:  out = jv.GetNumber() != 0.0; break;
+                                case JsonValueType::String:
+                                default: break;
+                            }
+                        };
+                        if (auto t = o.TryLookup(L"showFps")) readBool(t, m_showFpsOverlay);
+                        if (auto t = o.TryLookup(L"selectionColorEnabled")) readBool(t, m_useCustomSelectionColor);
+                        if (auto t = o.TryLookup(L"colorMapPreserve")) readBool(t, m_colorMapPreserveToggleState);
                     }
-                }
-                if (!ok)
-                {
-                    // Rewind to before FM/FO reads so we don't consume unrelated keys
-                    ifs.clear();
-                    ifs.seekg(posBefore);
-                }
-            }
-            else if (line.rfind(L"COLORMAPS=", 0) == 0)
-            {
-                int m = 0; try { m = std::stoi(line.substr(10)); } catch (...) { m = 0; }
-                for (int k = 0; k < m; ++k)
-                {
-                    std::wstring cm; if (!std::getline(ifs, cm)) break;
-                    if (cm.rfind(L"CM=", 0) == 0)
-                    {
-                        std::wstring row = cm.substr(3);
-                        int vals[8]{}; int idx = 0; size_t last = 0; size_t p2; while ((p2 = row.find(L',', last)) != std::wstring::npos && idx < 7) { vals[idx++] = _wtoi(row.substr(last, p2 - last).c_str()); last = p2 + 1; }
-                        if (last < row.size()) vals[idx++] = _wtoi(row.substr(last).c_str());
-                        if (idx >= 8) { ColorMapEntry e{}; e.enabled = vals[0] != 0; e.srcR = (uint8_t)vals[1]; e.srcG = (uint8_t)vals[2]; e.srcB = (uint8_t)vals[3]; e.dstR = (uint8_t)vals[4]; e.dstG = (uint8_t)vals[5]; e.dstB = (uint8_t)vals[6]; e.tolerance = vals[7]; m_globalColorMaps.push_back(e); }
+                    // Selection color
+                    if (auto v = root.TryLookup(L"selectionColor")) if (auto o = v.try_as<JsonObject>()) {
+                        int r = (int)o.GetNamedNumber(L"r", 255);
+                        int g = (int)o.GetNamedNumber(L"g", 0);
+                        int b = (int)o.GetNamedNumber(L"b", 0);
+                        m_selectionColor = RGB(r,g,b);
                     }
+                    // Brightness
+                    if (auto v = root.TryLookup(L"brightness")) if (auto o = v.try_as<JsonObject>()) {
+                        m_brightnessDelayFrames = (int)o.GetNamedNumber(L"delayFrames", 0);
+                        if (auto aV = o.TryLookup(L"lumaWeights")) if (auto a = aV.try_as<JsonArray>()) if (a.Size()==3) {
+                            m_lumaWeights[0]=(float)a.GetAt(0).GetNumber(); m_lumaWeights[1]=(float)a.GetAt(1).GetNumber(); m_lumaWeights[2]=(float)a.GetAt(2).GetNumber();
+                        }
+                    }
+                    // Hotkeys
+                    if (auto v = root.TryLookup(L"hotkeys")) if (auto o = v.try_as<JsonObject>()) {
+                        if (auto i = o.TryLookup(L"invert")) { auto j=i.try_as<JsonObject>(); if (j){ m_hotkeyInvertMod=(UINT)j.GetNamedNumber(L"mod", m_hotkeyInvertMod); m_hotkeyInvertVk=(UINT)j.GetNamedNumber(L"vk", m_hotkeyInvertVk);} }
+                        if (auto i = o.TryLookup(L"filter")) { auto j=i.try_as<JsonObject>(); if (j){ m_hotkeyFilterMod=(UINT)j.GetNamedNumber(L"mod", m_hotkeyFilterMod); m_hotkeyFilterVk=(UINT)j.GetNamedNumber(L"vk", m_hotkeyFilterVk);} }
+                        if (auto i = o.TryLookup(L"remove")) { auto j=i.try_as<JsonObject>(); if (j){ m_hotkeyRemoveMod=(UINT)j.GetNamedNumber(L"mod", m_hotkeyRemoveMod); m_hotkeyRemoveVk=(UINT)j.GetNamedNumber(L"vk", m_hotkeyRemoveVk);} }
+                    }
+                    m_favoriteFilterIndex = (int)root.GetNamedNumber(L"favoriteFilterIndex", m_favoriteFilterIndex);
+                    // Saved filters
+                    m_savedFilters.erase(std::remove_if(m_savedFilters.begin(), m_savedFilters.end(), [](const SavedFilter& f){ return !f.isBuiltin; }), m_savedFilters.end());
+                    if (auto v = root.TryLookup(L"savedFilters")) if (auto arr = v.try_as<JsonArray>()) {
+                        for (uint32_t i=0;i<arr.Size();++i){ auto f=arr.GetAt(i).try_as<JsonObject>(); if(!f) continue; SavedFilter sf{}; sf.isBuiltin=false; sf.name=f.GetNamedString(L"name", L""); if (auto jm=f.TryLookup(L"mat")) { auto a=jm.try_as<JsonArray>(); if(a&&a.Size()==16) for(int k=0;k<16;++k) sf.mat[k]=(float)a.GetAt(k).GetNumber(); } if (auto jo=f.TryLookup(L"offset")) { auto a=jo.try_as<JsonArray>(); if(a&&a.Size()==4) for(int k=0;k<4;++k) sf.offset[k]=(float)a.GetAt(k).GetNumber(); } if(!sf.name.empty()) m_savedFilters.push_back(sf);} }
+                    // Color maps
+                    m_globalColorMaps.clear();
+                    if (auto v = root.TryLookup(L"colorMaps")) if (auto arr=v.try_as<JsonArray>()) {
+                        for (uint32_t i=0;i<arr.Size();++i){ auto o=arr.GetAt(i).try_as<JsonObject>(); if(!o) continue; ColorMapEntry e{}; e.enabled=o.GetNamedBoolean(L"enabled", false); if (auto s=o.TryLookup(L"src")) { auto a=s.try_as<JsonArray>(); if(a&&a.Size()==3){ e.srcR=(uint8_t)a.GetAt(0).GetNumber(); e.srcG=(uint8_t)a.GetAt(1).GetNumber(); e.srcB=(uint8_t)a.GetAt(2).GetNumber(); } } if (auto d=o.TryLookup(L"dst")) { auto a=d.try_as<JsonArray>(); if(a&&a.Size()==3){ e.dstR=(uint8_t)a.GetAt(0).GetNumber(); e.dstG=(uint8_t)a.GetAt(1).GetNumber(); e.dstB=(uint8_t)a.GetAt(2).GetNumber(); } } e.tolerance=(int)o.GetNamedNumber(L"tolerance",0); m_globalColorMaps.push_back(e);} }
+
+                    // Log loaded selection color settings
+                    winvert4::Logf("Settings loaded: selectionColorEnabled=%d color=%d,%d,%d",
+                        m_useCustomSelectionColor ? 1 : 0,
+                        (int)GetRValue(m_selectionColor), (int)GetGValue(m_selectionColor), (int)GetBValue(m_selectionColor));
+
+                    // Log loaded selection color settings
+                    winvert4::Logf("Settings loaded: selectionColorEnabled=%d color=%d,%d,%d",
+                        m_useCustomSelectionColor ? 1 : 0,
+                        (int)GetRValue(m_selectionColor), (int)GetGValue(m_selectionColor), (int)GetBValue(m_selectionColor));
+
+                    // Apply to UI and return
+                    if (auto t = ShowFpsToggle()) t.IsOn(m_showFpsOverlay);
+                    ApplySettingsPageStateFromModel();
+                    RegisterAllHotkeys();
+                    UpdateAllHotkeyText();
+                    if (auto rootEl = this->Content().try_as<FrameworkElement>())
+                    {
+                        auto fav = rootEl.FindName(L"FavoriteFilterComboBox").try_as<Controls::ComboBox>(); if (fav) fav.SelectedIndex(m_favoriteFilterIndex);
+                        auto nb = rootEl.FindName(L"BrightnessDelayNumberBox").try_as<Controls::NumberBox>(); if (nb) nb.Value(m_brightnessDelayFrames);
+                    }
+                    LumaRNumberBox().Value(m_lumaWeights[0]); LumaGNumberBox().Value(m_lumaWeights[1]); LumaBNumberBox().Value(m_lumaWeights[2]);
+                    RefreshColorMapList(); UpdateSavedFiltersCombo(); UpdateFilterDropdown();
+                    return;
                 }
             }
         }
-
-        // Apply loaded values to UI
-        m_useCustomSelectionColor = selClrEn;
-        if (auto t = ShowFpsToggle()) t.IsOn(m_showFpsOverlay);
-        // Also reflect selection color enable toggle + picker enabled state
-        ApplySettingsPageStateFromModel();
-        if (hasSelClr)
-        {
-            winrt::Windows::UI::Color c{}; c.A = 255; c.R = static_cast<uint8_t>(selR); c.G = static_cast<uint8_t>(selG); c.B = static_cast<uint8_t>(selB);
-            if (auto picker = SelectionColorPicker()) picker.Color(c);
-            m_selectionColor = RGB(selR, selG, selB);
-        }
-        // Ensure simple sliders/matrix start at identity on launch
-        {
-            float m[16], off[4]; ComposeSimpleMatrix(m, off); WriteMatrixToGrid(m, off);
-        }
-        // Apply hotkeys and favorites UI
-        RegisterAllHotkeys();
-        UpdateAllHotkeyText();
-        if (auto root = this->Content().try_as<FrameworkElement>())
-        {
-            auto fav = root.FindName(L"FavoriteFilterComboBox").try_as<Controls::ComboBox>(); if (fav) fav.SelectedIndex(m_favoriteFilterIndex);
-            auto nb = root.FindName(L"BrightnessDelayNumberBox").try_as<Controls::NumberBox>(); if (nb) nb.Value(m_brightnessDelayFrames);
-            // Apply saved settings-page toggle state for color map preserve
-            if (auto ts = root.FindName(L"ColorMapPreserveToggle").try_as<Controls::ToggleSwitch>()) ts.IsOn(m_colorMapPreserveToggleState);
-        }
-        LumaRNumberBox().Value(m_lumaWeights[0]);
-        LumaGNumberBox().Value(m_lumaWeights[1]);
-        LumaBNumberBox().Value(m_lumaWeights[2]);
-        RefreshColorMapList();
-        UpdateSavedFiltersCombo();
-        UpdateFilterDropdown();
+        catch (...) {}
+        return;
     }
     catch (...) { }
 }
@@ -3474,3 +3450,33 @@ void winrt::Winvert4::implementation::MainWindow::PreviewColorMapToggle_Unchecke
             co_return;
         }();
     }
+void winrt::Winvert4::implementation::MainWindow::WriteJsonSettings_()
+{
+    using winrt::Windows::Storage::ApplicationData;
+    using winrt::Windows::Data::Json::JsonObject;
+    using winrt::Windows::Data::Json::JsonArray;
+    using winrt::Windows::Data::Json::JsonValue;
+    try
+    {
+        auto folder = ApplicationData::Current().LocalFolder();
+        std::wstring jsonPath = std::wstring(folder.Path().c_str()) + L"\\settings.json";
+        JsonObject root; root.SetNamedValue(L"version", JsonValue::CreateNumberValue(1));
+        JsonObject toggles; toggles.SetNamedValue(L"showFps", JsonValue::CreateBooleanValue(m_showFpsOverlay));
+        toggles.SetNamedValue(L"selectionColorEnabled", JsonValue::CreateBooleanValue(m_useCustomSelectionColor));
+        toggles.SetNamedValue(L"colorMapPreserve", JsonValue::CreateBooleanValue(m_colorMapPreserveToggleState));
+        root.SetNamedValue(L"toggles", toggles);
+        JsonObject sel; sel.SetNamedValue(L"r", JsonValue::CreateNumberValue((int)GetRValue(m_selectionColor)));
+        sel.SetNamedValue(L"g", JsonValue::CreateNumberValue((int)GetGValue(m_selectionColor)));
+        sel.SetNamedValue(L"b", JsonValue::CreateNumberValue((int)GetBValue(m_selectionColor)));
+        root.SetNamedValue(L"selectionColor", sel);
+        JsonObject bright; bright.SetNamedValue(L"delayFrames", JsonValue::CreateNumberValue(m_brightnessDelayFrames));
+        JsonArray lw; lw.Append(JsonValue::CreateNumberValue(m_lumaWeights[0])); lw.Append(JsonValue::CreateNumberValue(m_lumaWeights[1])); lw.Append(JsonValue::CreateNumberValue(m_lumaWeights[2]));
+        bright.SetNamedValue(L"lumaWeights", lw); root.SetNamedValue(L"brightness", bright);
+        JsonObject hk; { JsonObject i; i.SetNamedValue(L"mod", JsonValue::CreateNumberValue(m_hotkeyInvertMod)); i.SetNamedValue(L"vk", JsonValue::CreateNumberValue(m_hotkeyInvertVk)); hk.SetNamedValue(L"invert", i);} { JsonObject f; f.SetNamedValue(L"mod", JsonValue::CreateNumberValue(m_hotkeyFilterMod)); f.SetNamedValue(L"vk", JsonValue::CreateNumberValue(m_hotkeyFilterVk)); hk.SetNamedValue(L"filter", f);} { JsonObject r; r.SetNamedValue(L"mod", JsonValue::CreateNumberValue(m_hotkeyRemoveMod)); r.SetNamedValue(L"vk", JsonValue::CreateNumberValue(m_hotkeyRemoveVk)); hk.SetNamedValue(L"remove", r);} root.SetNamedValue(L"hotkeys", hk);
+        root.SetNamedValue(L"favoriteFilterIndex", JsonValue::CreateNumberValue(m_favoriteFilterIndex));
+        JsonArray filters; for (auto& sf : m_savedFilters) { if (sf.isBuiltin) continue; JsonObject jf; jf.SetNamedValue(L"name", JsonValue::CreateStringValue(sf.name)); JsonArray jmat; for (int k=0;k<16;++k) jmat.Append(JsonValue::CreateNumberValue(sf.mat[k])); JsonArray joff; for (int k=0;k<4;++k) joff.Append(JsonValue::CreateNumberValue(sf.offset[k])); jf.SetNamedValue(L"mat", jmat); jf.SetNamedValue(L"offset", joff); filters.Append(jf);} root.SetNamedValue(L"savedFilters", filters);
+        JsonArray maps; for (auto& e : m_globalColorMaps) { JsonObject jm; jm.SetNamedValue(L"enabled", JsonValue::CreateBooleanValue(e.enabled)); JsonArray src; src.Append(JsonValue::CreateNumberValue(e.srcR)); src.Append(JsonValue::CreateNumberValue(e.srcG)); src.Append(JsonValue::CreateNumberValue(e.srcB)); jm.SetNamedValue(L"src", src); JsonArray dst; dst.Append(JsonValue::CreateNumberValue(e.dstR)); dst.Append(JsonValue::CreateNumberValue(e.dstG)); dst.Append(JsonValue::CreateNumberValue(e.dstB)); jm.SetNamedValue(L"dst", dst); jm.SetNamedValue(L"tolerance", JsonValue::CreateNumberValue(e.tolerance)); maps.Append(jm);} root.SetNamedValue(L"colorMaps", maps);
+        std::wofstream jfs(jsonPath, std::ios::trunc | std::ios::binary); if (jfs) { jfs.imbue(std::locale::classic()); jfs << root.Stringify().c_str(); }
+    }
+    catch (...) {}
+}

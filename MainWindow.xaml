@@ -169,10 +169,10 @@
                                     <Grid ColumnSpacing="12">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Text="Custom border color" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                        <ToggleSwitch x:Name="SelectionColorEnableToggle" Grid.Column="1" OnContent="On" OffContent="Off" Toggled="SelectionColorEnable_Toggled"/>
+                                        <TextBlock Text="Custom border color" Grid.Column="0" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <ToggleSwitch x:Name="SelectionColorEnableToggle" Grid.Column="1" HorizontalAlignment="Right" OnContent="On" OffContent="Off" Toggled="SelectionColorEnable_Toggled"/>
                                     </Grid>
                                 </Expander.Header>
                                 <StackPanel Spacing="8" Padding="8,4,0,8" HorizontalAlignment="Left">
@@ -185,17 +185,7 @@
                         <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
                             <Expander x:Name="BrightnessExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" CornerRadius="2">
                                 <Expander.Header>
-                                    <Grid ColumnSpacing="12">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel>
-                                            <TextBlock Text="Brightness protection" FontWeight="SemiBold"/>
-                                            <TextBlock Text="Automatically choose the darker result" Opacity="0.7"/>
-                                        </StackPanel>
-                                        <!-- No On/Off toggle per request -->
-                                    </Grid>
+                                    <TextBlock Text="Brightness protection" FontWeight="SemiBold"/>
                                 </Expander.Header>
                                 <StackPanel Spacing="8" Padding="8,4,0,8" HorizontalAlignment="Left">
                                     <TextBlock Text="Trigger delay (frames)" Margin="0,0,0,4"/>
@@ -217,37 +207,37 @@
                             </Expander>
                         </Border>
 
-                        <!-- Update Rate Card -->
+                        <!-- Show FPS Card -->
                         <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
                             <!-- Match Expander: semi-transparent inner fill -->
                             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="2" Padding="2">
                                 <Grid ColumnSpacing="12">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Show FPS overlay" FontWeight="SemiBold" VerticalAlignment="Center" Margin="16,0,0,0"/>
-                                    <ToggleSwitch Grid.Column="1" x:Name="ShowFpsToggle" OnContent="On" OffContent="Off" IsOn="True" Toggled="ShowFpsToggle_Toggled"/>
+                                    <TextBlock Text="Show FPS overlay" Grid.Column="0" FontWeight="SemiBold" VerticalAlignment="Center" Margin="16,0,0,0"/>
+                                    <ToggleSwitch Grid.Column="1" x:Name="ShowFpsToggle" Margin="0,0,58,0" HorizontalAlignment="Right" OnContent="On" OffContent="Off" IsOn="True" Toggled="ShowFpsToggle_Toggled"/>
                                 </Grid>
                             </Border>
-                            <!--<Expander x:Name="UpdateRateExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                                <Expander.Header>
-                                    <TextBlock Text="Update rate" FontWeight="SemiBold"/>
-                                </Expander.Header>
-                                <StackPanel Spacing="8" Padding="8,4,0,8">
-                                    <ToggleSwitch x:Name="ShowFpsToggle" Header="Show FPS overlay" IsOn="True" Toggled="ShowFpsToggle_Toggled"/>
-                                </StackPanel>
-                            </Expander>-->
                         </Border>
 
                         <!-- Hotkeys Card -->
                         <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
                             <Expander x:Name="HotkeysExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" CornerRadius="2">
                                 <Expander.Header>
-                                    <TextBlock Text="Hotkeys" FontWeight="SemiBold"/>
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Run at Startup" Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                        <ToggleSwitch x:Name="RunAtStartupToggle" Grid.Column="1" HorizontalAlignment="Right" OnContent="On" OffContent="Off" Toggled="RunAtStartupToggle_Toggled"/>
+                                    </Grid>
+                                    
+                                    
                                 </Expander.Header>
                                 <StackPanel Spacing="8" Padding="8,4,0,8">
-                                    <ToggleSwitch x:Name="RunAtStartupToggle" Header="Run at startup" Toggled="RunAtStartupToggle_Toggled"/>
                                     <Grid ColumnSpacing="10" RowSpacing="5">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>

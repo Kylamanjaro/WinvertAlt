@@ -64,6 +64,7 @@ namespace winrt::Winvert4::implementation
         // Unified app state persistence to a single blob file
         void SaveAppState();
         void LoadAppState();
+        void WriteJsonSettings_();
 
         // --- Tab and Flyout Handlers ---
         void InfoBar_Closed(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::InfoBarClosedEventArgs const&);
