@@ -86,13 +86,9 @@ By adopting **Desktop Duplication** and **GPU shaders**:
 ---
 
 ## Next Steps (template)
-Add saving feature for settings:
-  * Selection Border Color
-  * Brightness Protection Delay
-  * Brightness Protection luminance weights
-  * FPS toggle
-  * Hotkeys
-  * Custom Filters
-  * Color mappings
-  * Color mapping preserve brightness toggle
+Add automated test build WinvertUnitTestApp
+* Launch Winvert4 without save file
+* Navigate to settings page and alter the settings
+* Close the app
+* Relaunch the app and validate the settings page matches the save file
 

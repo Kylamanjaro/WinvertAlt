@@ -32,6 +32,18 @@ using namespace winrt::Windows::Foundation;
 
 namespace
 {
+    // For self-test helper use before definitions
+    static bool PathIsDir(const std::wstring& p);
+    static std::wstring JoinPath(const std::wstring& a, const std::wstring& b);
+    static bool FindDefaultSelfTestDir(std::wstring& outDir);
+    static bool GetEnvW(const wchar_t* name, std::wstring& out)
+    {
+        wchar_t buf[1024] = {0};
+        DWORD n = GetEnvironmentVariableW(name, buf, (DWORD)std::size(buf));
+        if (n == 0) return false;
+        out.assign(buf, buf + wcsnlen_s(buf, std::size(buf)));
+        return !out.empty();
+    }
     constexpr wchar_t kSelectionWndClass[] = L"Winvert4_SelectionOverlayWindow";
     constexpr int HOTKEY_INVERT_ID = 1;
     constexpr int HOTKEY_FILTER_ID = 2;
@@ -266,6 +278,8 @@ namespace winrt::Winvert4::implementation
         UpdateSavedFiltersCombo();
         UpdateFilterDropdown();
 
+        // Testing hooks removed; external runner handles orchestration
+
         // Hide the control panel until the first selection creates a window.
         // We will show it in OnSelectionCompleted() once a region is added.
         ::ShowWindow(m_mainHwnd, SW_HIDE);
@@ -296,12 +310,15 @@ namespace winrt::Winvert4::implementation
         m_isAppInitialized = true;
         // Do not enable saving on startup; only enable after user opens Settings
 
+        // Self-tests removed; external test app orchestrates validation
+
         // Do not start selection automatically. The global hotkey will start
         // the operation (similar to Snipping Tool) after app launch.
 
         winvert4::Log("MainWindow: ctor end");
     }
 
+    // DumpAppStateToPath_ removed (external test app will validate by reading debug.log and LocalState)
     winrt::Winvert4::implementation::MainWindow::~MainWindow()
     {
         // TODO: Save settings
@@ -1189,22 +1206,231 @@ namespace
         return std::wstring(folder.Path().c_str()) + L"\\settings.json";
     }
 
+#if 0
     static std::wstring ComputeSettingsPathForLoad()
     {
-        if (IsDevSettingsEnabled())
-        {
-            auto dev = BuildFolderSettingsPath();
-            DWORD attrs = GetFileAttributesW(dev.c_str());
-            if (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY)) return dev;
-        }
         return LocalStateSettingsPath();
     }
+#endif
 
+    static bool WriteUtf8File(const std::wstring& path, const std::string& data)
+    {
+        std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
+        if (!ofs) return false;
+        ofs.write(data.data(), (std::streamsize)data.size());
+        return (bool)ofs;
+    }
+
+#if 0
+    void winrt::Winvert4::implementation::MainWindow::RunSelfTests_()
+    {
+        winvert4::Log("SelfTest: start");
+        auto readJson = [](const std::wstring& path, winrt::Windows::Data::Json::JsonObject& out)->bool{
+            std::ifstream jfs(path, std::ios::binary);
+            if (!jfs) return false;
+            std::string data((std::istreambuf_iterator<char>(jfs)), std::istreambuf_iterator<char>());
+            if (data.size() >= 3 && (unsigned char)data[0]==0xEF && (unsigned char)data[1]==0xBB && (unsigned char)data[2]==0xBF)
+                data.erase(0,3);
+            int wlen = MultiByteToWideChar(CP_UTF8, 0, data.data(), (int)data.size(), nullptr, 0);
+            std::wstring wjson; wjson.resize(std::max(0, wlen));
+            if (wlen > 0) MultiByteToWideChar(CP_UTF8, 0, data.data(), (int)data.size(), wjson.data(), wlen);
+            return winrt::Windows::Data::Json::JsonObject::TryParse(winrt::hstring(wjson), out);
+        };
+
+        auto approxEq = [](float a, float b){ return fabsf(a-b) < 1e-4f; };
+
+        auto verifyAgainst = [&](const std::wstring& path, std::string* outLog)->bool{
+            using namespace winrt::Windows::Data::Json;
+            JsonObject root; if (!readJson(path, root)) { winvert4::Log("SelfTest: failed to read expected json"); if(outLog) outLog->append("Failed to read expected JSON\n"); return false; }
+            bool ok = true;
+            // toggles
+            if (auto v = root.TryLookup(L"toggles")) if (v.ValueType()==JsonValueType::Object){ auto o=v.GetObject();
+                auto eqb=[&](const wchar_t* k, bool actual){ if (auto t=o.TryLookup(k)){ bool exp=false; switch(t.ValueType()){case JsonValueType::Boolean: exp=t.GetBoolean(); break; case JsonValueType::Number: exp=t.GetNumber()!=0.0; break; case JsonValueType::String:{ auto s=t.GetString(); std::wstring ws(s.c_str()); for(auto&ch:ws)ch=(wchar_t)towlower(ch); exp=(ws==L"true"||ws==L"1"||ws==L"yes"||ws==L"on"); break;} default: break;} if (exp!=actual){ std::string kn(k,k+wcslen(k)); winvert4::Logf("SelfTest: toggles.%s mismatch", kn.c_str()); if(outLog){ outLog->append("mismatch toggles."); outLog->append(kn); outLog->append("\n"); } ok=false; } } };
+                eqb(L"showFps", m_showFpsOverlay);
+                eqb(L"selectionColorEnabled", m_useCustomSelectionColor);
+                eqb(L"colorMapPreserve", m_colorMapPreserveToggleState);
+            }
+            // selectionColor
+            if (auto v=root.TryLookup(L"selectionColor")) if (v.ValueType()==JsonValueType::Object){ auto o=v.GetObject();
+                int er=(int)o.GetNamedNumber(L"r", (double)GetRValue(m_selectionColor));
+                int eg=(int)o.GetNamedNumber(L"g", (double)GetGValue(m_selectionColor));
+                int eb=(int)o.GetNamedNumber(L"b", (double)GetBValue(m_selectionColor));
+                if (er!=(int)GetRValue(m_selectionColor) || eg!=(int)GetGValue(m_selectionColor) || eb!=(int)GetBValue(m_selectionColor)) { winvert4::Log("SelfTest: selectionColor mismatch"); if(outLog) outLog->append("mismatch selectionColor\n"); ok=false; }
+            }
+            // brightness
+            if (auto v=root.TryLookup(L"brightness")) if (v.ValueType()==JsonValueType::Object){ auto o=v.GetObject();
+                int df=(int)o.GetNamedNumber(L"delayFrames", m_brightnessDelayFrames); if (df!=m_brightnessDelayFrames){ winvert4::Log("SelfTest: delayFrames mismatch"); if(outLog) outLog->append("mismatch delayFrames\n"); ok=false; }
+                if (auto lw=o.TryLookup(L"lumaWeights")) if (lw.ValueType()==JsonValueType::Array){ auto a=lw.GetArray(); if (a.Size()==3){ float r=(float)a.GetAt(0).GetNumber(), g=(float)a.GetAt(1).GetNumber(), b=(float)a.GetAt(2).GetNumber(); if(!(approxEq(r,m_lumaWeights[0])&&approxEq(g,m_lumaWeights[1])&&approxEq(b,m_lumaWeights[2]))){ winvert4::Log("SelfTest: lumaWeights mismatch"); if(outLog) outLog->append("mismatch lumaWeights\n"); ok=false; } } }
+            }
+            // hotkeys
+            if (auto v=root.TryLookup(L"hotkeys")) if (v.ValueType()==JsonValueType::Object){ auto o=v.GetObject();
+                auto check=[&](const wchar_t* k, UINT mod, UINT vk){ if (auto i=o.TryLookup(k)) if (i.ValueType()==JsonValueType::Object){ auto j=i.GetObject(); UINT em=(UINT)j.GetNamedNumber(L"mod", mod); UINT ev=(UINT)j.GetNamedNumber(L"vk", vk); if(em!=mod||ev!=vk){ std::string kn(k,k+wcslen(k)); winvert4::Logf("SelfTest: hotkeys.%s mismatch", kn.c_str()); if(outLog){ outLog->append("mismatch hotkeys."); outLog->append(kn); outLog->append("\n"); } ok=false; } } };
+                check(L"invert", m_hotkeyInvertMod, m_hotkeyInvertVk);
+                check(L"filter", m_hotkeyFilterMod, m_hotkeyFilterVk);
+                check(L"remove", m_hotkeyRemoveMod, m_hotkeyRemoveVk);
+            }
+            // favoriteFilterIndex
+            int ffi=(int)root.GetNamedNumber(L"favoriteFilterIndex", m_favoriteFilterIndex); if (ffi!=m_favoriteFilterIndex){ winvert4::Log("SelfTest: favoriteFilterIndex mismatch"); if(outLog) outLog->append("mismatch favoriteFilterIndex\n"); ok=false; }
+            // savedFilters count + names
+            if (auto v=root.TryLookup(L"savedFilters")) if (v.ValueType()==JsonValueType::Array){ auto arr=v.GetArray();
+                // Count only non-builtin in model
+                size_t modelCount=0; for (auto& sf : m_savedFilters) if (!sf.isBuiltin) modelCount++;
+                if (modelCount != arr.Size()) { winvert4::Log("SelfTest: savedFilters count mismatch"); if(outLog) outLog->append("mismatch savedFilters count\n"); ok=false; }
+                else {
+                    // Check names in order
+                    size_t idx=0; for (auto& sf : m_savedFilters) { if (sf.isBuiltin) continue; auto item=arr.GetAt((uint32_t)idx); if (item.ValueType()!=JsonValueType::Object){ ok=false; break; } auto o=item.GetObject(); auto name=o.GetNamedString(L"name", L""); if (name != sf.name){ winvert4::Log("SelfTest: savedFilters name mismatch"); if(outLog) outLog->append("mismatch savedFilters name\n"); ok=false; } idx++; }
+                }
+            }
+            // colorMaps
+            if (auto v=root.TryLookup(L"colorMaps")) if (v.ValueType()==JsonValueType::Array){ auto arr=v.GetArray(); if (arr.Size() != m_globalColorMaps.size()){ winvert4::Log("SelfTest: colorMaps count mismatch"); ok=false; } else {
+                for (uint32_t i=0;i<arr.Size();++i){ auto item=arr.GetAt(i); if (item.ValueType()!=JsonValueType::Object){ ok=false; break; } auto o=item.GetObject(); bool en=o.GetNamedBoolean(L"enabled", false); int sr=0,sg=0,sb=0,dr=0,dg=0,db=0; if (auto s=o.TryLookup(L"src")) if (s.ValueType()==JsonValueType::Array){ auto a=s.GetArray(); if (a.Size()==3){ sr=(int)a.GetAt(0).GetNumber(); sg=(int)a.GetAt(1).GetNumber(); sb=(int)a.GetAt(2).GetNumber(); } } if (auto d=o.TryLookup(L"dst")) if (d.ValueType()==JsonValueType::Array){ auto a=d.GetArray(); if (a.Size()==3){ dr=(int)a.GetAt(0).GetNumber(); dg=(int)a.GetAt(1).GetNumber(); db=(int)a.GetAt(2).GetNumber(); } } int tol=(int)o.GetNamedNumber(L"tolerance",0); const auto& me=m_globalColorMaps[i]; if (!(en==me.enabled && sr==me.srcR && sg==me.srcG && sb==me.srcB && dr==me.dstR && dg==me.dstG && db==me.dstB && tol==me.tolerance)) { winvert4::Log("SelfTest: colorMaps entry mismatch"); if(outLog){ char b[256]; _snprintf_s(b,_TRUNCATE,"mismatch colorMap[%u]\n", i); outLog->append(b);} ok=false; break; } }
+            } }
+            return ok;
+        };
+
+        int pass=0, total=0;
+
+        // If a directory is specified, use testSave0.json and testSave1.json from it; otherwise synthesize two files in temp
+        std::wstring testDir; bool haveDir = GetEnvW(L"WINVERT_SELFTEST_DIR", testDir);
+        if (!haveDir)
+        {
+            // Try to auto-resolve project-root\tests relative to the executable
+            if (FindDefaultSelfTestDir(testDir))
+            {
+                haveDir = true;
+                std::string p(testDir.begin(), testDir.end());
+                winvert4::Logf("SelfTest: auto-detected test dir: %s", p.c_str());
+            }
+        }
+        if (!haveDir)
+        {
+            winvert4::Log("SelfTest: tests dir not found; skipping");
+            return;
+        }
+
+        // If there is a saves subfolder, iterate all *.json within and write per-test logs to tests\logs
+        std::wstring savesDir = haveDir ? JoinPath(testDir, L"saves") : L"";
+        std::wstring logsDir  = haveDir ? JoinPath(testDir, L"logs")  : L"";
+        auto EnsureDir = [](const std::wstring& d){ if (!PathIsDir(d)) { CreateDirectoryW(d.c_str(), nullptr); } };
+        if (haveDir && PathIsDir(savesDir))
+        {
+            EnsureDir(logsDir);
+            WIN32_FIND_DATAW ffd; HANDLE h = FindFirstFileW((JoinPath(savesDir, L"*.json")).c_str(), &ffd);
+            if (h != INVALID_HANDLE_VALUE)
+            {
+                do
+                {
+                    if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+                    std::wstring fname = ffd.cFileName;
+                    std::wstring fpath = JoinPath(savesDir, fname);
+                    SetEnvironmentVariableW(L"WINVERT_SETTINGS_PATH", fpath.c_str());
+                    LoadAppState();
+                    std::string tlog;
+                    bool okcase = verifyAgainst(fpath, &tlog);
+                    total++; if (okcase) pass++;
+                    // Write per-test log file
+                    std::wstring logName = fname + L".log";
+                    std::wstring logPath = JoinPath(logsDir, logName);
+                    std::string content;
+                    content += "Test file: "; content += std::string(fname.begin(), fname.end()); content += "\n";
+                    content += okcase ? "Result: PASS\n" : "Result: FAIL\n";
+                    content += tlog;
+                    // Snapshot of key state
+                    char buf[256];
+                    _snprintf_s(buf, _TRUNCATE, "selectionColorEnabled=%d color=%d,%d,%d\n",
+                        m_useCustomSelectionColor?1:0,
+                        (int)GetRValue(m_selectionColor), (int)GetGValue(m_selectionColor), (int)GetBValue(m_selectionColor));
+                    content += buf;
+                    _snprintf_s(buf, _TRUNCATE, "showFps=%d colorMapPreserve=%d delayFrames=%d luma=%0.4f,%0.4f,%0.4f\n",
+                        m_showFpsOverlay?1:0, m_colorMapPreserveToggleState?1:0, m_brightnessDelayFrames,
+                        m_lumaWeights[0], m_lumaWeights[1], m_lumaWeights[2]);
+                    content += buf;
+                    _snprintf_s(buf, _TRUNCATE, "hotkeys invert(mod=%u,vk=%u) filter(mod=%u,vk=%u) remove(mod=%u,vk=%u)\n",
+                        m_hotkeyInvertMod, m_hotkeyInvertVk, m_hotkeyFilterMod, m_hotkeyFilterVk, m_hotkeyRemoveMod, m_hotkeyRemoveVk);
+                    content += buf;
+                    _snprintf_s(buf, _TRUNCATE, "favoriteFilterIndex=%d savedFilters(nonbuiltin)=%zu colorMaps=%zu\n",
+                        m_favoriteFilterIndex,
+                        (size_t)std::count_if(m_savedFilters.begin(), m_savedFilters.end(),[](const SavedFilter& sf){return !sf.isBuiltin;}),
+                        m_globalColorMaps.size());
+                    content += buf;
+                    WriteUtf8File(logPath, content);
+                } while (FindNextFileW(h, &ffd));
+                FindClose(h);
+            }
+        }
+        else
+        {
+            winvert4::Log("SelfTest: tests/saves directory not found; skipping");
+        }
+
+        winvert4::Logf("SelfTest: done %d/%d PASS", pass, total);
+        SetEnvironmentVariableW(L"WINVERT_SETTINGS_PATH", nullptr);
+    }
+#endif
+#if 0
     static std::wstring ComputeSettingsPathForSave(bool& outUsedDev)
     {
         outUsedDev = false;
-        if (IsDevSettingsEnabled()) { outUsedDev = true; return BuildFolderSettingsPath(); }
         return LocalStateSettingsPath();
+    }
+#endif
+
+    static std::wstring GetModuleDir()
+    {
+        wchar_t path[MAX_PATH] = {0};
+        GetModuleFileNameW(nullptr, path, (DWORD)std::size(path));
+        std::wstring p(path);
+        size_t pos = p.find_last_of(L"\\/");
+        if (pos != std::wstring::npos) p.resize(pos);
+        return p;
+    }
+
+    static bool PathIsDir(const std::wstring& p)
+    {
+        DWORD a = GetFileAttributesW(p.c_str());
+        return (a != INVALID_FILE_ATTRIBUTES) && (a & FILE_ATTRIBUTE_DIRECTORY);
+    }
+
+    static bool PathIsFile(const std::wstring& p)
+    {
+        DWORD a = GetFileAttributesW(p.c_str());
+        return (a != INVALID_FILE_ATTRIBUTES) && !(a & FILE_ATTRIBUTE_DIRECTORY);
+    }
+
+    static std::wstring JoinPath(const std::wstring& a, const std::wstring& b)
+    {
+        if (a.empty()) return b;
+        if (b.empty()) return a;
+        wchar_t sep = L'\\';
+        if (a.back() == L'\\' || a.back() == L'/') return a + b;
+        return a + sep + b;
+    }
+
+    // Walk up from the module directory for a nearby "tests" folder (project-root\tests)
+    static bool FindDefaultSelfTestDir(std::wstring& outDir)
+    {
+        std::wstring dir = GetModuleDir();
+        // Search up to 6 levels up
+        for (int i = 0; i < 6; ++i)
+        {
+            std::wstring candidate = JoinPath(dir, L"tests");
+            if (PathIsDir(candidate))
+            {
+                // Prefer directories that actually contain testSave0.json and testSave1.json, but accept just the folder
+                std::wstring f0 = JoinPath(candidate, L"testSave0.json");
+                std::wstring f1 = JoinPath(candidate, L"testSave1.json");
+                if (PathIsFile(f0) || PathIsFile(f1) || PathIsDir(candidate))
+                {
+                    outDir = candidate;
+                    return true;
+                }
+            }
+            // move up one level
+            size_t pos = dir.find_last_of(L"\\/");
+            if (pos == std::wstring::npos) break;
+            dir.resize(pos);
+        }
+        return false;
     }
 }
 
@@ -2963,8 +3189,8 @@ void winrt::Winvert4::implementation::MainWindow::SaveAppState()
         // First: write JSON settings
         try
         {
-            bool usedDev = false;
-            std::wstring jsonPath = ComputeSettingsPathForSave(usedDev);
+            auto folder = ApplicationData::Current().LocalFolder();
+            std::wstring jsonPath = std::wstring(folder.Path().c_str()) + L"\\settings.json";
             {
                 std::string p(jsonPath.begin(), jsonPath.end());
                 winvert4::Logf("SaveAppState: writing json to %s", p.c_str());
@@ -2997,14 +3223,6 @@ void winrt::Winvert4::implementation::MainWindow::SaveAppState()
             JsonArray maps; for (auto& e : m_globalColorMaps) { JsonObject jm; jm.SetNamedValue(L"enabled", JsonValue::CreateBooleanValue(e.enabled)); JsonArray src; src.Append(JsonValue::CreateNumberValue(e.srcR)); src.Append(JsonValue::CreateNumberValue(e.srcG)); src.Append(JsonValue::CreateNumberValue(e.srcB)); jm.SetNamedValue(L"src", src); JsonArray dst; dst.Append(JsonValue::CreateNumberValue(e.dstR)); dst.Append(JsonValue::CreateNumberValue(e.dstG)); dst.Append(JsonValue::CreateNumberValue(e.dstB)); jm.SetNamedValue(L"dst", dst); jm.SetNamedValue(L"tolerance", JsonValue::CreateNumberValue(e.tolerance)); maps.Append(jm);} root.SetNamedValue(L"colorMaps", maps);
             // Write
             std::wofstream jfs(jsonPath, std::ios::trunc | std::ios::binary);
-            if (!jfs && usedDev)
-            {
-                // Fallback to LocalState if dev path isn't writable
-                auto fallback = LocalStateSettingsPath();
-                std::string pf(fallback.begin(), fallback.end());
-                winvert4::Logf("SaveAppState: dev path write failed; falling back to %s", pf.c_str());
-                jfs.open(fallback, std::ios::trunc | std::ios::binary);
-            }
             if (jfs) { jfs.imbue(std::locale::classic()); jfs << root.Stringify().c_str(); }
         }
         catch (...) {}
@@ -3024,7 +3242,7 @@ void winrt::Winvert4::implementation::MainWindow::LoadAppState()
         // Try JSON first
         try
         {
-            std::wstring jsonPath = ComputeSettingsPathForLoad();
+            std::wstring jsonPath = LocalStateSettingsPath();
             {
                 std::string p(jsonPath.begin(), jsonPath.end());
                 winvert4::Logf("LoadAppState: jsonPath=%s", p.c_str());
@@ -3667,8 +3885,8 @@ void winrt::Winvert4::implementation::MainWindow::WriteJsonSettings_()
     using winrt::Windows::Data::Json::JsonValue;
     try
     {
-        bool usedDev = false;
-        std::wstring jsonPath = ComputeSettingsPathForSave(usedDev);
+        auto folder = ApplicationData::Current().LocalFolder();
+        std::wstring jsonPath = std::wstring(folder.Path().c_str()) + L"\\settings.json";
         JsonObject root; root.SetNamedValue(L"version", JsonValue::CreateNumberValue(1));
         JsonObject toggles; toggles.SetNamedValue(L"showFps", JsonValue::CreateBooleanValue(m_showFpsOverlay));
         toggles.SetNamedValue(L"selectionColorEnabled", JsonValue::CreateBooleanValue(m_useCustomSelectionColor));
@@ -3686,11 +3904,6 @@ void winrt::Winvert4::implementation::MainWindow::WriteJsonSettings_()
         JsonArray filters; for (auto& sf : m_savedFilters) { if (sf.isBuiltin) continue; JsonObject jf; jf.SetNamedValue(L"name", JsonValue::CreateStringValue(sf.name)); JsonArray jmat; for (int k=0;k<16;++k) jmat.Append(JsonValue::CreateNumberValue(sf.mat[k])); JsonArray joff; for (int k=0;k<4;++k) joff.Append(JsonValue::CreateNumberValue(sf.offset[k])); jf.SetNamedValue(L"mat", jmat); jf.SetNamedValue(L"offset", joff); filters.Append(jf);} root.SetNamedValue(L"savedFilters", filters);
         JsonArray maps; for (auto& e : m_globalColorMaps) { JsonObject jm; jm.SetNamedValue(L"enabled", JsonValue::CreateBooleanValue(e.enabled)); JsonArray src; src.Append(JsonValue::CreateNumberValue(e.srcR)); src.Append(JsonValue::CreateNumberValue(e.srcG)); src.Append(JsonValue::CreateNumberValue(e.srcB)); jm.SetNamedValue(L"src", src); JsonArray dst; dst.Append(JsonValue::CreateNumberValue(e.dstR)); dst.Append(JsonValue::CreateNumberValue(e.dstG)); dst.Append(JsonValue::CreateNumberValue(e.dstB)); jm.SetNamedValue(L"dst", dst); jm.SetNamedValue(L"tolerance", JsonValue::CreateNumberValue(e.tolerance)); maps.Append(jm);} root.SetNamedValue(L"colorMaps", maps);
         std::wofstream jfs(jsonPath, std::ios::trunc | std::ios::binary);
-        if (!jfs && usedDev)
-        {
-            auto fallback = LocalStateSettingsPath();
-            jfs.open(fallback, std::ios::trunc | std::ios::binary);
-        }
         if (jfs) { jfs.imbue(std::locale::classic()); jfs << root.Stringify().c_str(); }
     }
     catch (...) {}

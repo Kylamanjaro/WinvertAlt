@@ -217,6 +217,7 @@ namespace winrt::Winvert4::implementation
         void UpdateUIState();
         void SetWindowSize(int width, int height);
         void UpdateAllHotkeyText();
+        
         void UpdateHotkeyText(winrt::Microsoft::UI::Xaml::Controls::TextBox const& textBox, UINT mod, UINT vk);
         int SelectedTabIndex();
         HWND SelectedWindowHwnd();
