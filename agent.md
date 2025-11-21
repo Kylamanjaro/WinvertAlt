@@ -77,6 +77,7 @@ By adopting **Desktop Duplication** and **GPU shaders**:
   - bin/
   - obj/
   - Properties/
+- You can edit all files in ../WinvertUnitTestApp/
 - Agent is not permitted to build the project
 - Agent is not permitted to add Nuget Packages
   - If a package is to be added you must request for it
