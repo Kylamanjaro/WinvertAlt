@@ -78,6 +78,10 @@
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LocalDebuggerEnvironment>WINVERT_TEST_OPEN_SETTINGS=1%0D%0A$(LocalDebuggerEnvironment)</LocalDebuggerEnvironment>
+    <LocalDebuggerMergeEnvironment>true</LocalDebuggerMergeEnvironment>
+  </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>

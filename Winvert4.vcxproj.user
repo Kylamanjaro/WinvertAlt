@@ -30,7 +30,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <CommandLineArgs>WINVERT_TEST_OPEN_SETTINGS=1</CommandLineArgs>
-    <DebuggerFlavor>WindowsDeviceDebugger</DebuggerFlavor>
+    <DebuggerFlavor>AppHostLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <CommandLineArgs>
