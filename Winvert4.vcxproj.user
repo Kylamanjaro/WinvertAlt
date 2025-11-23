@@ -10,4 +10,31 @@
     <SplashScreenSource>C:\Users\kbuch\source\repos\Winvert4\Assets\winvert_app_logo_final.pdf</SplashScreenSource>
     <PackageLogoSource>C:\Users\kbuch\source\repos\Winvert4\Assets\winvert_app_logo_final.pdf</PackageLogoSource>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
+    <CommandLineArgs>WINVERT_TEST_OPEN_SETTINGS=1</CommandLineArgs>
+    <DebuggerFlavor>WindowsDeviceDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
+    <CommandLineArgs>
+    </CommandLineArgs>
+    <DebuggerFlavor>WindowsDeviceDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <CommandLineArgs>WINVERT_TEST_OPEN_SETTINGS=1</CommandLineArgs>
+    <DebuggerFlavor>WindowsDeviceDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <CommandLineArgs>
+    </CommandLineArgs>
+    <DebuggerFlavor>WindowsDeviceDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <CommandLineArgs>WINVERT_TEST_OPEN_SETTINGS=1</CommandLineArgs>
+    <DebuggerFlavor>WindowsDeviceDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <CommandLineArgs>
+    </CommandLineArgs>
+    <DebuggerFlavor>WindowsDeviceDebugger</DebuggerFlavor>
+  </PropertyGroup>
 </Project>

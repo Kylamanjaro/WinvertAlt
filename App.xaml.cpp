@@ -9,6 +9,19 @@
 using namespace winrt;
 using namespace winrt::Microsoft::UI::Xaml;
 
+namespace
+{
+    static bool IsTestOpenSettingsOnLaunch()
+    {
+        wchar_t buf[32] = { 0 };
+        DWORD n = GetEnvironmentVariableW(L"WINVERT_TEST_OPEN_SETTINGS", buf, (DWORD)std::size(buf));
+        if (n == 0) return false;
+        std::wstring v(buf, buf + wcsnlen_s(buf, std::size(buf)));
+        for (auto& ch : v) ch = (wchar_t)towlower(ch);
+        return (v == L"1" || v == L"true" || v == L"on" || v == L"yes");
+    }
+}
+
 namespace winrt::Winvert4::implementation
 {
     App::App()
@@ -35,13 +48,17 @@ namespace winrt::Winvert4::implementation
 
         // Hide the window immediately after activation so the app runs
         // headless until the user presses the global hotkey to begin
-        // selection (Snipping Tool–style behavior).
+        // selection (Snipping Tool–style behavior). In test mode, keep it
+        // visible so automation can reach the control panel.
         if (auto windowNative = m_window.try_as<::IWindowNative>())
         {
             HWND hwnd{};
             if (SUCCEEDED(windowNative->get_WindowHandle(&hwnd)) && hwnd)
             {
-                ::ShowWindow(hwnd, SW_HIDE);
+                if (!IsTestOpenSettingsOnLaunch())
+                {
+                    ::ShowWindow(hwnd, SW_HIDE);
+                }
             }
         }
     }

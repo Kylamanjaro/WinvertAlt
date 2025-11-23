@@ -44,6 +44,15 @@ namespace
         out.assign(buf, buf + wcsnlen_s(buf, std::size(buf)));
         return !out.empty();
     }
+    static bool IsTestOpenSettingsOnLaunch()
+    {
+        wchar_t buf[32] = {0};
+        DWORD n = GetEnvironmentVariableW(L"WINVERT_TEST_OPEN_SETTINGS", buf, (DWORD)std::size(buf));
+        if (n == 0) return false;
+        std::wstring v(buf, buf + wcsnlen_s(buf, std::size(buf)));
+        for (auto& ch : v) ch = (wchar_t)towlower(ch);
+        return (v == L"1" || v == L"true" || v == L"on" || v == L"yes");
+    }
     constexpr wchar_t kSelectionWndClass[] = L"Winvert4_SelectionOverlayWindow";
     constexpr int HOTKEY_INVERT_ID = 1;
     constexpr int HOTKEY_FILTER_ID = 2;
@@ -273,6 +282,8 @@ namespace winrt::Winvert4::implementation
 
         }
 
+        bool testOpenSettings = IsTestOpenSettingsOnLaunch();
+
         // Load app state from json file, then init saved filters UI (always)
         LoadAppState();
         UpdateSavedFiltersCombo();
@@ -282,7 +293,11 @@ namespace winrt::Winvert4::implementation
 
         // Hide the control panel until the first selection creates a window.
         // We will show it in OnSelectionCompleted() once a region is added.
-        ::ShowWindow(m_mainHwnd, SW_HIDE);
+        // In test mode, keep it visible so automation can reach Settings.
+        if (!testOpenSettings)
+        {
+            ::ShowWindow(m_mainHwnd, SW_HIDE);
+        }
 
         UpdateUIState();
 
@@ -309,6 +324,12 @@ namespace winrt::Winvert4::implementation
 
         m_isAppInitialized = true;
         // Do not enable saving on startup; only enable after user opens Settings
+
+        if (testOpenSettings)
+        {
+            // In test mode, immediately navigate to Settings so automation can drive it.
+            SettingsButton_Click(nullptr, nullptr);
+        }
 
         // Self-tests removed; external test app orchestrates validation
 
