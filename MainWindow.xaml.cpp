@@ -5,6 +5,7 @@
 #include "OutputManager.h"
 #include <winrt/Microsoft.UI.Windowing.h>
 #include <winrt/Microsoft.UI.Xaml.Input.h>
+#include <winrt/Microsoft.UI.Xaml.Automation.h>
 #include <winrt/Windows.System.h>
 #include <winrt/Microsoft.UI.Xaml.Shapes.h>
 #include <winrt/Windows.Storage.h>
@@ -711,6 +712,25 @@ namespace winrt::Winvert4::implementation
                 tb.Width(60); tb.Height(32);
                 Microsoft::UI::Xaml::Controls::Grid::SetRow(tb, r);
                 Microsoft::UI::Xaml::Controls::Grid::SetColumn(tb, c);
+
+                // Assign stable AutomationIds so UI Automation tests can identify matrix cells.
+                // This does not affect visuals, but lets tests map cells to JSON fields:
+                //   savedFilters[0].mat[ r*4 + c ]  for r,c in [0..3]
+                //   savedFilters[0].offset[ c ]     for r==4, c in [0..3]
+                std::wstring autoId;
+                if (r < 4 && c < 4)
+                {
+                    autoId = L"FilterMat_r" + std::to_wstring(r) + L"c" + std::to_wstring(c);
+                }
+                else if (r == 4 && c < 4)
+                {
+                    autoId = L"FilterOffset_c" + std::to_wstring(c);
+                }
+                if (!autoId.empty())
+                {
+                    winrt::Microsoft::UI::Xaml::Automation::AutomationProperties::SetAutomationId(tb, autoId);
+                }
+
                 // Lock 5th column to constants 0,0,0,0,1
                 if (c == 4)
                 {
