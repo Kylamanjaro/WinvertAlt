@@ -701,7 +701,33 @@ namespace winrt::Winvert4::implementation
     {
         auto grid = FilterMatrixGrid();
         if (!grid) return;
-        if (grid.Children().Size() > 0) return;
+        if (grid.Children().Size() > 0)
+        {
+            // Grid already exists; ensure AutomationIds are stamped for UIA.
+            for (auto child : grid.Children())
+            {
+                auto tb = child.try_as<Microsoft::UI::Xaml::Controls::TextBox>();
+                if (!tb) continue;
+                int r = Microsoft::UI::Xaml::Controls::Grid::GetRow(tb);
+                int c = Microsoft::UI::Xaml::Controls::Grid::GetColumn(tb);
+                std::wstring autoId;
+                if (r >= 0 && r < 4 && c >= 0 && c < 4)
+                {
+                    autoId = L"FilterMat_r" + std::to_wstring(r) + L"c" + std::to_wstring(c);
+                }
+                else if (r == 4 && c >= 0 && c < 4)
+                {
+                    autoId = L"FilterOffset_c" + std::to_wstring(c);
+                }
+                if (!autoId.empty())
+                {
+                    tb.Name(winrt::hstring(autoId));
+                    winrt::Microsoft::UI::Xaml::Automation::AutomationProperties::SetAutomationId(tb, autoId);
+                    winrt::Microsoft::UI::Xaml::Automation::AutomationProperties::SetName(tb, autoId);
+                }
+            }
+            return;
+        }
 
         for (int r = 0; r < 5; ++r)
         {
@@ -728,7 +754,11 @@ namespace winrt::Winvert4::implementation
                 }
                 if (!autoId.empty())
                 {
+                    // Give each cell a stable identifier; use both Name and
+                    // AutomationProperties so UIA can surface it reliably.
+                    tb.Name(winrt::hstring(autoId));
                     winrt::Microsoft::UI::Xaml::Automation::AutomationProperties::SetAutomationId(tb, autoId);
+                    winrt::Microsoft::UI::Xaml::Automation::AutomationProperties::SetName(tb, autoId);
                 }
 
                 // Lock 5th column to constants 0,0,0,0,1
