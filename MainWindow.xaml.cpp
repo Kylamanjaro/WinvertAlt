@@ -1206,7 +1206,9 @@ namespace winrt::Winvert4::implementation
 
     void winrt::Winvert4::implementation::MainWindow::SelectionColorPicker_ColorChanged(ColorPicker const&, ColorChangedEventArgs const& args)
     {
+        if (m_isProgrammaticSelectionColorChange || !m_isSavingEnabled) return;
         auto newColor = args.NewColor();
+        winvert4::Logf("SelectionColorPicker_ColorChanged: R=%d G=%d B=%d", (int)newColor.R, (int)newColor.G, (int)newColor.B);
         m_selectionColor = RGB(newColor.R, newColor.G, newColor.B);
         SaveAppState();
     }
@@ -2078,7 +2080,7 @@ namespace
     {
         // Selection color toggle + picker
         if (auto tSel = SelectionColorEnableToggle()) tSel.IsOn(m_useCustomSelectionColor);
-        if (auto cpSel = SelectionColorPicker()) cpSel.IsEnabled(m_useCustomSelectionColor);
+        ApplySelectionColorToPicker_();
         // FPS toggle in settings card
         if (auto tFps = ShowFpsToggle()) tFps.IsOn(m_showFpsOverlay);
         // Brightness protection delay + luma weights and color map preserve toggle
@@ -2090,6 +2092,55 @@ namespace
         LumaRNumberBox().Value(m_lumaWeights[0]);
         LumaGNumberBox().Value(m_lumaWeights[1]);
         LumaBNumberBox().Value(m_lumaWeights[2]);
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::ApplySelectionColorToPicker_()
+    {
+        auto cpSel = SelectionColorPicker();
+        if (!cpSel)
+        {
+            // Picker may not be realized yet; retry on UI thread after layout.
+            auto weak = get_weak();
+            auto dq = DispatcherQueue();
+            dq.TryEnqueue([weak]()
+            {
+                if (auto self = weak.get())
+                {
+                    auto cp = self->SelectionColorPicker();
+                    if (!cp) return;
+                    cp.IsEnabled(self->m_useCustomSelectionColor);
+                    winrt::Windows::UI::Color c{};
+                    c.A = 255;
+                    c.R = (uint8_t)GetRValue(self->m_selectionColor);
+                    c.G = (uint8_t)GetGValue(self->m_selectionColor);
+                    c.B = (uint8_t)GetBValue(self->m_selectionColor);
+                    winvert4::Logf("ApplySelectionColorToPicker_: deferred set R=%d G=%d B=%d",
+                        (int)c.R, (int)c.G, (int)c.B);
+                    self->m_isProgrammaticSelectionColorChange = true;
+                    cp.Color(c);
+                    self->m_isProgrammaticSelectionColorChange = false;
+                    auto applied = cp.Color();
+                    winvert4::Logf("ApplySelectionColorToPicker_: deferred applied R=%d G=%d B=%d",
+                        (int)applied.R, (int)applied.G, (int)applied.B);
+                }
+            });
+            return;
+        }
+
+        cpSel.IsEnabled(m_useCustomSelectionColor);
+        winrt::Windows::UI::Color c{};
+        c.A = 255;
+        c.R = (uint8_t)GetRValue(m_selectionColor);
+        c.G = (uint8_t)GetGValue(m_selectionColor);
+        c.B = (uint8_t)GetBValue(m_selectionColor);
+        winvert4::Logf("ApplySelectionColorToPicker_: immediate set R=%d G=%d B=%d",
+            (int)c.R, (int)c.G, (int)c.B);
+        m_isProgrammaticSelectionColorChange = true;
+        cpSel.Color(c);
+        m_isProgrammaticSelectionColorChange = false;
+        auto applied = cpSel.Color();
+        winvert4::Logf("ApplySelectionColorToPicker_: immediate applied R=%d G=%d B=%d",
+            (int)applied.R, (int)applied.G, (int)applied.B);
     }
 
     void winrt::Winvert4::implementation::MainWindow::SetWindowSize(int width, int height)

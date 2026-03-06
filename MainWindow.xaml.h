@@ -223,6 +223,7 @@ namespace winrt::Winvert4::implementation
         HWND SelectedWindowHwnd();
         winrt::Windows::Foundation::IAsyncAction InitStartupToggleAsync();
         void ApplySettingsPageStateFromModel();
+        void ApplySelectionColorToPicker_();
         void ApplyGlobalColorMapsToSettings(EffectSettings& settings);
         // Apply current or provided settings to the primary + any extra windows for a tab index
         void UpdateSettingsForGroup(int idx);
@@ -254,6 +255,7 @@ namespace winrt::Winvert4::implementation
 
         // --- UI reentrancy guards ---
         bool m_isProgrammaticColorPickerChange{ false };
+        bool m_isProgrammaticSelectionColorChange{ false };
         bool m_isUpdatingColorMapUI{ false };
         bool m_isUpdatingSimpleUI{ false };
         bool m_isClosing{ false };
