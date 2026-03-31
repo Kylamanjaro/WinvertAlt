@@ -258,6 +258,7 @@ namespace winrt::Winvert4::implementation
         bool m_isProgrammaticSelectionColorChange{ false };
         bool m_isUpdatingColorMapUI{ false };
         bool m_isUpdatingSimpleUI{ false };
+        bool m_isInitializingStartupToggle{ false };
         bool m_isClosing{ false };
         bool m_isSavingEnabled{ false };
 

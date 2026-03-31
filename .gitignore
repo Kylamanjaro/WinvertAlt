@@ -1,8 +1,11 @@
 # Build directory
 Assets/
 Generated Files/
+BundleArtifacts/
+Release/
 packages/
 x64/
+AppPackages/
 WinvertApp/
 .vs/
 .vscode/
@@ -15,3 +18,5 @@ WinvertApp/
 *.hex
 *.pfx
 *.log
+*.txt
+

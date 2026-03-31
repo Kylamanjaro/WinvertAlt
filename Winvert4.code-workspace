@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../WinvertUnitTestApp4"
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"mutex": "cpp",
+			"xstring": "cpp"
+		}
+	}
+}

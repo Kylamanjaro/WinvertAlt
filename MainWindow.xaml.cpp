@@ -49,6 +49,19 @@ namespace
     constexpr int HOTKEY_INVERT_ID = 1;
     constexpr int HOTKEY_FILTER_ID = 2;
     constexpr int HOTKEY_REMOVE_ID = 3;
+    static const char* StartupTaskStateToString(winrt::Windows::ApplicationModel::StartupTaskState state)
+    {
+        using winrt::Windows::ApplicationModel::StartupTaskState;
+        switch (state)
+        {
+        case StartupTaskState::Disabled: return "Disabled";
+        case StartupTaskState::DisabledByUser: return "DisabledByUser";
+        case StartupTaskState::Enabled: return "Enabled";
+        case StartupTaskState::DisabledByPolicy: return "DisabledByPolicy";
+        case StartupTaskState::EnabledByPolicy: return "EnabledByPolicy";
+        default: return "Unknown";
+        }
+    }
 
     // Default luminance weights (BT.709 for sRGB)
     constexpr float kDefaultLumaWeights[3] = { 0.2126f, 0.7152f, 0.0722f };
@@ -1493,9 +1506,26 @@ namespace
         UnregisterHotKey(m_mainHwnd, HOTKEY_FILTER_ID);
         UnregisterHotKey(m_mainHwnd, HOTKEY_REMOVE_ID);
 
-        RegisterHotKey(m_mainHwnd, HOTKEY_INVERT_ID, m_hotkeyInvertMod, m_hotkeyInvertVk);
-        RegisterHotKey(m_mainHwnd, HOTKEY_FILTER_ID, m_hotkeyFilterMod, m_hotkeyFilterVk);
-        RegisterHotKey(m_mainHwnd, HOTKEY_REMOVE_ID, m_hotkeyRemoveMod, m_hotkeyRemoveVk);
+        BOOL okInvert = RegisterHotKey(m_mainHwnd, HOTKEY_INVERT_ID, m_hotkeyInvertMod, m_hotkeyInvertVk);
+        DWORD errInvert = okInvert ? 0 : GetLastError();
+        BOOL okFilter = RegisterHotKey(m_mainHwnd, HOTKEY_FILTER_ID, m_hotkeyFilterMod, m_hotkeyFilterVk);
+        DWORD errFilter = okFilter ? 0 : GetLastError();
+        BOOL okRemove = RegisterHotKey(m_mainHwnd, HOTKEY_REMOVE_ID, m_hotkeyRemoveMod, m_hotkeyRemoveVk);
+        DWORD errRemove = okRemove ? 0 : GetLastError();
+
+        winvert4::Logf(
+            "RegisterAllHotkeys: invert(ok=%d mod=%u vk=%u err=%lu) filter(ok=%d mod=%u vk=%u err=%lu) remove(ok=%d mod=%u vk=%u err=%lu)",
+            okInvert ? 1 : 0, m_hotkeyInvertMod, m_hotkeyInvertVk, static_cast<unsigned long>(errInvert),
+            okFilter ? 1 : 0, m_hotkeyFilterMod, m_hotkeyFilterVk, static_cast<unsigned long>(errFilter),
+            okRemove ? 1 : 0, m_hotkeyRemoveMod, m_hotkeyRemoveVk, static_cast<unsigned long>(errRemove));
+
+        if (!okInvert || !okFilter || !okRemove)
+        {
+            if (auto status = RebindStatusText())
+            {
+                status.Text(L"One or more hotkeys failed to register. Check log for details.");
+            }
+        }
         UpdateAllHotkeyText();
     }
 
@@ -1568,8 +1598,8 @@ namespace
         }
         else
         {
-            // No regions left: close the app when removal was via hotkey
-            ::PostMessage(m_mainHwnd, WM_CLOSE, 0, 0);
+            // No regions left: remain resident and wait for the next hotkey.
+            UpdateUIState();
         }
     }
 
@@ -2576,22 +2606,26 @@ namespace
         switch (uMsg) {
         case WM_HOTKEY:
             {
+                // Defer action to the dispatcher to avoid mutating XAML/TabView
+                // state directly inside the Win32 window-proc stack.
+                auto dq = pThis->DispatcherQueue();
                 if (wParam == HOTKEY_INVERT_ID) {
-                pThis->OnInvertHotkeyPressed();
+                    dq.TryEnqueue([pThis]() { pThis->OnInvertHotkeyPressed(); });
                 }
                 else if (wParam == HOTKEY_FILTER_ID) {
-                pThis->OnFilterHotkeyPressed();
+                    dq.TryEnqueue([pThis]() { pThis->OnFilterHotkeyPressed(); });
                 }
                 else if (wParam == HOTKEY_REMOVE_ID) {
-                pThis->OnRemoveHotkeyPressed();
+                    dq.TryEnqueue([pThis]() { pThis->OnRemoveHotkeyPressed(); });
                 }
-            break;
-        }
+                return 0;
+            }
         case WM_CLOSE:
-            // Save state and teardown
+            // Keep Winvert resident in the background; closing the control panel
+            // should not terminate hotkeys/startup behavior.
             pThis->SaveAppState();
-            pThis->m_isClosing = true;
-            break;
+            ::ShowWindow(pThis->m_mainHwnd, SW_HIDE);
+            return 0;
         case WM_DESTROY:
             pThis->m_isClosing = true;
             PostQuitMessage(0);
@@ -3938,10 +3972,21 @@ void winrt::Winvert4::implementation::MainWindow::PreviewColorMapToggle_Unchecke
             auto dq = DispatcherQueue();
             dq.TryEnqueue([this, isOn, canToggle]()
             {
+                m_isInitializingStartupToggle = true;
                 if (auto t = RunAtStartupToggle()) { t.IsOn(isOn); t.IsEnabled(canToggle); }
+                m_isInitializingStartupToggle = false;
             });
+            winvert4::Logf("StartupTask init: state=%s isOn=%d canToggle=%d",
+                StartupTaskStateToString(state), isOn ? 1 : 0, canToggle ? 1 : 0);
         }
-        catch (...) { /* ignore if manifest not present while developing */ }
+        catch (winrt::hresult_error const& ex)
+        {
+            winvert4::Logf("StartupTask init failed: hr=0x%08X", static_cast<unsigned int>(ex.code().value));
+        }
+        catch (...)
+        {
+            winvert4::Log("StartupTask init failed: unknown exception");
+        }
         co_return;
     }
 
@@ -3951,6 +3996,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewColorMapToggle_Unchecke
         using winrt::Windows::ApplicationModel::StartupTaskState;
         auto toggle = RunAtStartupToggle();
         if (!toggle) return;
+        if (m_isInitializingStartupToggle) return;
 
         auto weakThis = get_weak();
         auto _ = [weakThis]() -> winrt::Windows::Foundation::IAsyncAction
@@ -3962,18 +4008,50 @@ void winrt::Winvert4::implementation::MainWindow::PreviewColorMapToggle_Unchecke
                 try
                 {
                     auto task = co_await StartupTask::GetAsync(L"Winvert4Startup");
+                    auto before = task.State();
                     if (wantEnable)
                     {
                         auto res = co_await task.RequestEnableAsync();
                         bool isOn = (res == StartupTaskState::Enabled || res == StartupTaskState::EnabledByPolicy);
-                        self->DispatcherQueue().TryEnqueue([self, isOn]() { if (auto t = self->RunAtStartupToggle()) t.IsOn(isOn); });
+                        winvert4::Logf("StartupTask toggle: requestEnable result=%s isOn=%d",
+                            StartupTaskStateToString(res), isOn ? 1 : 0);
+                        self->DispatcherQueue().TryEnqueue([self, isOn]()
+                        {
+                            self->m_isInitializingStartupToggle = true;
+                            if (auto t = self->RunAtStartupToggle()) t.IsOn(isOn);
+                            self->m_isInitializingStartupToggle = false;
+                        });
                     }
                     else
                     {
                         task.Disable();
+                        winvert4::Log("StartupTask toggle: disable requested");
                     }
+                    auto after = task.State();
+                    winvert4::Logf("StartupTask toggle: before=%s after=%s wantEnable=%d",
+                        StartupTaskStateToString(before), StartupTaskStateToString(after), wantEnable ? 1 : 0);
                 }
-                catch (...) { /* ignore */ }
+                catch (winrt::hresult_error const& ex)
+                {
+                    winvert4::Logf("StartupTask toggle failed: hr=0x%08X wantEnable=%d",
+                        static_cast<unsigned int>(ex.code().value), wantEnable ? 1 : 0);
+                    self->DispatcherQueue().TryEnqueue([self, wantEnable]()
+                    {
+                        self->m_isInitializingStartupToggle = true;
+                        if (auto t = self->RunAtStartupToggle()) t.IsOn(!wantEnable);
+                        self->m_isInitializingStartupToggle = false;
+                    });
+                }
+                catch (...)
+                {
+                    winvert4::Logf("StartupTask toggle failed: unknown exception wantEnable=%d", wantEnable ? 1 : 0);
+                    self->DispatcherQueue().TryEnqueue([self, wantEnable]()
+                    {
+                        self->m_isInitializingStartupToggle = true;
+                        if (auto t = self->RunAtStartupToggle()) t.IsOn(!wantEnable);
+                        self->m_isInitializingStartupToggle = false;
+                    });
+                }
             }
             co_return;
         }();

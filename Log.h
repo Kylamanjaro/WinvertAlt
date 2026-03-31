@@ -4,10 +4,19 @@
 #include <cstdarg>
 #include <mutex>
 
+#ifndef WINVERT_ENABLE_LOGGING
+#if defined(_DEBUG)
+#define WINVERT_ENABLE_LOGGING 1
+#else
+#define WINVERT_ENABLE_LOGGING 0
+#endif
+#endif
+
 namespace winvert4
 {
     inline const wchar_t* LogFilePath()
     {
+#if WINVERT_ENABLE_LOGGING
         // Always write to the user's temp directory to avoid permission issues
         static wchar_t path[MAX_PATH] = L"";
         static bool initialized = false;
@@ -23,10 +32,14 @@ namespace winvert4
             initialized = true;
         }
         return path;
+#else
+        return L"";
+#endif
     }
 
     inline void Log(const char* line)
     {
+#if WINVERT_ENABLE_LOGGING
         static std::mutex m;
         std::lock_guard<std::mutex> lock(m);
 
@@ -42,14 +55,21 @@ namespace winvert4
         static const char crlf[] = "\r\n";
         WriteFile(h, crlf, 2, &w, nullptr);
         CloseHandle(h);
+#else
+        (void)line;
+#endif
     }
 
     inline void Logf(const char* fmt, ...)
     {
+#if WINVERT_ENABLE_LOGGING
         char buf[1024];
         va_list args; va_start(args, fmt);
         _vsnprintf_s(buf, _TRUNCATE, fmt, args);
         va_end(args);
         Log(buf);
+#else
+        (void)fmt;
+#endif
     }
 }
