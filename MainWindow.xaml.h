@@ -222,6 +222,8 @@ namespace winrt::Winvert4::implementation
         int SelectedTabIndex();
         HWND SelectedWindowHwnd();
         winrt::Windows::Foundation::IAsyncAction InitStartupToggleAsync();
+        void RemoveRegionAt(int idx);
+        void RenumberRegionTabHeaders();
         void ApplySettingsPageStateFromModel();
         void ApplySelectionColorToPicker_();
         void ApplyGlobalColorMapsToSettings(EffectSettings& settings);

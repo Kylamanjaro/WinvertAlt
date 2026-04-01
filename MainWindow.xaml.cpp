@@ -384,56 +384,11 @@ namespace winrt::Winvert4::implementation
         if (idx < 0) return;
         auto items = RegionsTabView().TabItems();
         if (idx >= static_cast<int>(items.Size())) return;
-
-        // Release effect window resources
-        if (idx < static_cast<int>(m_effectWindows.size()))
-        {
-            if (auto& wnd = m_effectWindows[idx])
-            {
-                wnd->Hide();
-                wnd.reset();
-            }
-            m_effectWindows.erase(m_effectWindows.begin() + idx);
-        }
-        if (idx < static_cast<int>(m_effectWindowExtras.size()))
-        {
-            auto& extras = m_effectWindowExtras[idx];
-            for (auto& ew : extras)
-            {
-                if (ew) { ew->Hide(); ew.reset(); }
-            }
-            m_effectWindowExtras.erase(m_effectWindowExtras.begin() + idx);
-        }
-        if (idx < static_cast<int>(m_windowSettings.size()))
-        {
-            m_windowSettings.erase(m_windowSettings.begin() + idx);
-        }
-        if (idx < static_cast<int>(m_windowHidden.size()))
-        {
-            m_windowHidden.erase(m_windowHidden.begin() + idx);
-        }
-        if (idx < static_cast<int>(m_hasPreviewBackup.size()))
-        {
-            m_hasPreviewBackup.erase(m_hasPreviewBackup.begin() + idx);
-        }
-        if (idx < static_cast<int>(m_previewBackup.size()))
-        {
-            m_previewBackup.erase(m_previewBackup.begin() + idx);
-        }
-        if (idx < static_cast<int>(m_tabFilterSelections.size()))
-        {
-            m_tabFilterSelections.erase(m_tabFilterSelections.begin() + idx);
-        }
+        RemoveRegionAt(idx);
 
         // Remove tab and renumber headers
         items.RemoveAt(static_cast<uint32_t>(idx));
-        for (uint32_t i = 0; i < items.Size(); ++i)
-        {
-            if (auto tab = items.GetAt(i).try_as<TabViewItem>())
-            {
-                tab.Header(box_value(L"Region " + std::to_wstring(i + 1)));
-            }
-        }
+        RenumberRegionTabHeaders();
         // Adjust selection
         if (items.Size() > 0)
         {
@@ -1549,55 +1504,11 @@ namespace
         if (items.Size() == 0) return;
         int idx = static_cast<int>(items.Size()) - 1;
 
-        // Release effect window resources
-        if (idx < static_cast<int>(m_effectWindows.size()))
-        {
-            if (auto& wnd = m_effectWindows[idx])
-            {
-                wnd->Hide();
-                wnd.reset();
-            }
-            m_effectWindows.erase(m_effectWindows.begin() + idx);
-        }
-        if (idx < static_cast<int>(m_effectWindowExtras.size()))
-        {
-            auto& extras = m_effectWindowExtras[idx];
-            for (auto& ew : extras)
-            {
-                if (ew) { ew->Hide(); ew.reset(); }
-            }
-            m_effectWindowExtras.erase(m_effectWindowExtras.begin() + idx);
-        }
-        if (idx < static_cast<int>(m_windowSettings.size()))
-        {
-            m_windowSettings.erase(m_windowSettings.begin() + idx);
-        }
-        if (idx < static_cast<int>(m_windowHidden.size()))
-        {
-            m_windowHidden.erase(m_windowHidden.begin() + idx);
-        }
-        if (idx < static_cast<int>(m_hasPreviewBackup.size()))
-        {
-            m_hasPreviewBackup.erase(m_hasPreviewBackup.begin() + idx);
-        }
-        if (idx < static_cast<int>(m_previewBackup.size()))
-        {
-            m_previewBackup.erase(m_previewBackup.begin() + idx);
-        }
-        if (idx < static_cast<int>(m_tabFilterSelections.size()))
-        {
-            m_tabFilterSelections.erase(m_tabFilterSelections.begin() + idx);
-        }
+        RemoveRegionAt(idx);
 
         // Remove tab and renumber headers
         items.RemoveAt(static_cast<uint32_t>(idx));
-        for (uint32_t i = 0; i < items.Size(); ++i)
-        {
-            if (auto tab = items.GetAt(i).try_as<TabViewItem>())
-            {
-                tab.Header(box_value(L"Region " + std::to_wstring(i + 1)));
-            }
-        }
+        RenumberRegionTabHeaders();
         // Adjust selection or close app if no windows remain
         if (items.Size() > 0)
         {
@@ -2496,6 +2407,66 @@ namespace
         return reinterpret_cast<HWND>(static_cast<uintptr_t>(tag));
     }
 
+    void MainWindow::RemoveRegionAt(int idx)
+    {
+        if (idx < 0) return;
+
+        if (idx < static_cast<int>(m_effectWindows.size()))
+        {
+            if (auto& wnd = m_effectWindows[idx])
+            {
+                wnd->Hide();
+                wnd.reset();
+            }
+            m_effectWindows.erase(m_effectWindows.begin() + idx);
+        }
+        if (idx < static_cast<int>(m_effectWindowExtras.size()))
+        {
+            auto& extras = m_effectWindowExtras[idx];
+            for (auto& ew : extras)
+            {
+                if (ew)
+                {
+                    ew->Hide();
+                    ew.reset();
+                }
+            }
+            m_effectWindowExtras.erase(m_effectWindowExtras.begin() + idx);
+        }
+        if (idx < static_cast<int>(m_windowSettings.size()))
+        {
+            m_windowSettings.erase(m_windowSettings.begin() + idx);
+        }
+        if (idx < static_cast<int>(m_windowHidden.size()))
+        {
+            m_windowHidden.erase(m_windowHidden.begin() + idx);
+        }
+        if (idx < static_cast<int>(m_hasPreviewBackup.size()))
+        {
+            m_hasPreviewBackup.erase(m_hasPreviewBackup.begin() + idx);
+        }
+        if (idx < static_cast<int>(m_previewBackup.size()))
+        {
+            m_previewBackup.erase(m_previewBackup.begin() + idx);
+        }
+        if (idx < static_cast<int>(m_tabFilterSelections.size()))
+        {
+            m_tabFilterSelections.erase(m_tabFilterSelections.begin() + idx);
+        }
+    }
+
+    void MainWindow::RenumberRegionTabHeaders()
+    {
+        auto items = RegionsTabView().TabItems();
+        for (uint32_t i = 0; i < items.Size(); ++i)
+        {
+            if (auto tab = items.GetAt(i).try_as<TabViewItem>())
+            {
+                tab.Header(box_value(L"Region " + std::to_wstring(i + 1)));
+            }
+        }
+    }
+
     void winrt::Winvert4::implementation::MainWindow::FiltersMenuFlyout_Closing(IInspectable const&, Controls::Primitives::FlyoutBaseClosingEventArgs const& e)
     {
         if (m_keepFiltersFlyoutOpenNext)
@@ -2527,42 +2498,10 @@ namespace
         if (items.IndexOf(args.Item(), index))
         {
             int idx = static_cast<int>(index);
-
-            // Release effect window resources and remove state
-            if (idx < static_cast<int>(m_effectWindows.size()))
-            {
-                if (auto& wnd = m_effectWindows[idx]) { wnd->Hide(); wnd.reset(); }
-                m_effectWindows.erase(m_effectWindows.begin() + idx);
-            }
-            if (idx < static_cast<int>(m_effectWindowExtras.size()))
-            {
-                auto& extras = m_effectWindowExtras[idx];
-                for (auto& ew : extras)
-                {
-                    if (ew) { ew->Hide(); ew.reset(); }
-                }
-                m_effectWindowExtras.erase(m_effectWindowExtras.begin() + idx);
-            }
-            if (idx < static_cast<int>(m_windowSettings.size()))
-                m_windowSettings.erase(m_windowSettings.begin() + idx);
-            if (idx < static_cast<int>(m_windowHidden.size()))
-                m_windowHidden.erase(m_windowHidden.begin() + idx);
-            if (idx < static_cast<int>(m_hasPreviewBackup.size()))
-                m_hasPreviewBackup.erase(m_hasPreviewBackup.begin() + idx);
-            if (idx < static_cast<int>(m_previewBackup.size()))
-                m_previewBackup.erase(m_previewBackup.begin() + idx);
-            if (idx < static_cast<int>(m_tabFilterSelections.size()))
-                m_tabFilterSelections.erase(m_tabFilterSelections.begin() + idx);
+            RemoveRegionAt(idx);
 
             items.RemoveAt(index);
-            // Renumber headers
-            for (uint32_t i = 0; i < items.Size(); ++i)
-            {
-                if (auto tab = items.GetAt(i).try_as<TabViewItem>())
-                {
-                    tab.Header(box_value(L"Region " + std::to_wstring(i + 1)));
-                }
-            }
+            RenumberRegionTabHeaders();
             // Adjust selection
             if (items.Size() > 0)
             {
