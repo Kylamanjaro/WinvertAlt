@@ -124,4 +124,7 @@ private:
     bool  m_effectiveInvert{ false };
     int   m_brightProtPendingCount{ 0 };
     bool  m_brightProtPendingState{ false };
+
+    // Guards teardown/reset vs. in-flight Render callbacks from duplication thread.
+    std::mutex m_lifecycleMutex;
 };

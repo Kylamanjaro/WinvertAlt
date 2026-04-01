@@ -5,6 +5,7 @@
 #include "OutputManager.h"
 #include <dwmapi.h>
 #include <d3dcompiler.h>
+#include <mutex>
 
 using ::Microsoft::WRL::ComPtr;
 
@@ -95,6 +96,45 @@ namespace {
           }
           return float4(result, 1.0);
         })";
+
+    static bool GetOrCompileShaders(ComPtr<ID3DBlob>& outVs, ComPtr<ID3DBlob>& outPs)
+    {
+        static std::once_flag s_once;
+        static std::mutex s_mutex;
+        static ComPtr<ID3DBlob> s_vsBlob;
+        static ComPtr<ID3DBlob> s_psBlob;
+        static bool s_ok = false;
+
+        std::call_once(s_once, []()
+        {
+            ComPtr<ID3DBlob> vsb, psb, err;
+            HRESULT hrVS = D3DCompile(kVS, (UINT)strlen(kVS), nullptr, nullptr, nullptr, "main", "vs_4_0", 0, 0, &vsb, &err);
+            if (FAILED(hrVS) || !vsb)
+            {
+                const char* emsg = err ? (const char*)err->GetBufferPointer() : "";
+                winvert4::Logf("EW: VS compile failed 0x%08X %s", hrVS, emsg);
+                return;
+            }
+            err.Reset();
+            HRESULT hrPS = D3DCompile(kPS, (UINT)strlen(kPS), nullptr, nullptr, nullptr, "main", "ps_4_0", 0, 0, &psb, &err);
+            if (FAILED(hrPS) || !psb)
+            {
+                const char* emsg = err ? (const char*)err->GetBufferPointer() : "";
+                winvert4::Logf("EW: PS compile failed 0x%08X %s", hrPS, emsg);
+                return;
+            }
+            s_vsBlob = vsb;
+            s_psBlob = psb;
+            s_ok = true;
+            winvert4::Log("EW: shader cache initialized");
+        });
+
+        std::lock_guard<std::mutex> guard(s_mutex);
+        if (!s_ok || !s_vsBlob || !s_psBlob) return false;
+        outVs = s_vsBlob;
+        outPs = s_psBlob;
+        return true;
+    }
 }
 
 LRESULT CALLBACK EffectWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -190,7 +230,12 @@ void EffectWindow::Show()
 
 void EffectWindow::Hide()
 {
+    std::lock_guard<std::mutex> lk(m_lifecycleMutex);
     m_run = false;
+
+    // Stop future callbacks before releasing render resources.
+    if (m_thread) m_thread->RemoveSubscriber(this);
+
     m_cb.Reset();
     m_vb.Reset();
     m_il.Reset();
@@ -202,9 +247,6 @@ void EffectWindow::Hide()
     m_deferredCtx.Reset();
     m_immediateCtx.Reset();
     m_d3d.Reset();
-
-    // Unsubscribe
-    if (m_thread) m_thread->RemoveSubscriber(this);
 
     // Destroy window
     if (m_hwnd) { DestroyWindow(m_hwnd); m_hwnd = nullptr; }
@@ -400,18 +442,10 @@ void EffectWindow::CreateAndShow()
         m_gpuTimer[i].inFlight = false;
     }
 
-    // Shaders
-    ComPtr<ID3DBlob> vsb, psb, err;
-    HRESULT hrVS = D3DCompile(kVS, (UINT)strlen(kVS), nullptr, nullptr, nullptr, "main", "vs_4_0", 0, 0, &vsb, &err);
-    if (FAILED(hrVS) || !vsb) {
-        const char* emsg = err ? (const char*)err->GetBufferPointer() : "";
-        winvert4::Logf("EW: VS compile failed 0x%08X %s", hrVS, emsg);
-        return;
-    }
-    HRESULT hrPS = D3DCompile(kPS, (UINT)strlen(kPS), nullptr, nullptr, nullptr, "main", "ps_4_0", 0, 0, &psb, &err);
-    if (FAILED(hrPS) || !psb) {
-        const char* emsg = err ? (const char*)err->GetBufferPointer() : "";
-        winvert4::Logf("EW: PS compile failed 0x%08X %s", hrPS, emsg);
+    // Shaders (compiled once per process and cached)
+    ComPtr<ID3DBlob> vsb, psb;
+    if (!GetOrCompileShaders(vsb, psb)) {
+        winvert4::Log("EW: failed to initialize shader cache");
         return;
     }
 
@@ -516,6 +550,7 @@ void EffectWindow::CreateAndShow()
 
 void EffectWindow::Render(ID3D11Texture2D* frame, unsigned long long lastPresentQpc)
 {
+    std::lock_guard<std::mutex> lk(m_lifecycleMutex);
     if (!m_run) { winvert4::Log("EW.Render early exit: m_run=false"); return; }
     if (m_isHidden) { winvert4::Log("EW.Render early exit: hidden"); return; }
     if (!frame) { winvert4::Log("EW.Render early exit: frame=null"); return; }

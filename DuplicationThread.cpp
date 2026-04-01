@@ -11,6 +11,7 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <chrono>
 
 using Microsoft::WRL::ComPtr;
 
@@ -194,14 +195,6 @@ void DuplicationThread::RequestRedraw()
 
 void DuplicationThread::ThreadProc()
 {
-    winvert4::Log("DT: waiting for subscribers");
-    {
-        std::unique_lock<std::mutex> lk(m_subMutex);
-        m_subCv.wait(lk, [this] { return !m_isRunning || !m_subscriptions.empty(); });
-        if (!m_isRunning) return;
-        winvert4::Logf("DT: subscribers available: %zu", m_subscriptions.size());
-    }
-
     if (!m_output || !m_device) return;
 
     // Create duplication
@@ -256,8 +249,45 @@ void DuplicationThread::ThreadProc()
         winvert4::Log("DT: full-frame texture creation FAILED");
     }
 
+    // Warm-up: try to capture one frame up front so first subscriber can render
+    // immediately without waiting for a random desktop update cadence.
+    {
+        DXGI_OUTDUPL_FRAME_INFO fi{};
+        ComPtr<IDXGIResource> res;
+        HRESULT hrWarm = m_duplication->AcquireNextFrame(250, &fi, &res);
+        if (SUCCEEDED(hrWarm))
+        {
+            ComPtr<ID3D11Texture2D> frameTex;
+            res.As(&frameTex);
+            if (frameTex && m_fullTexture)
+            {
+                m_context->CopyResource(m_fullTexture.Get(), frameTex.Get());
+                winvert4::Log("DT: warm-up frame captured");
+            }
+            m_duplication->ReleaseFrame();
+        }
+        else if (hrWarm == DXGI_ERROR_WAIT_TIMEOUT)
+        {
+            winvert4::Log("DT: warm-up frame timeout");
+        }
+        else
+        {
+            winvert4::Logf("DT: warm-up AcquireNextFrame failed hr=0x%08X", hrWarm);
+        }
+    }
+
     // Frame loop
     while (m_isRunning) {
+        {
+            std::unique_lock<std::mutex> lk(m_subMutex);
+            if (m_subscriptions.empty())
+            {
+                m_subCv.wait_for(lk, std::chrono::milliseconds(50), [this] { return !m_isRunning || !m_subscriptions.empty(); });
+                if (!m_isRunning) break;
+                if (m_subscriptions.empty()) continue;
+            }
+        }
+
         DXGI_OUTDUPL_FRAME_INFO fi{};
         ComPtr<IDXGIResource> res;
         const UINT waitMs = (m_redrawCountdown.load(std::memory_order_relaxed) > 0) ? 1u : 16u;

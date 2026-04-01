@@ -40,6 +40,6 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <CommandLineArgs>
     </CommandLineArgs>
-    <DebuggerFlavor>WindowsDeviceDebugger</DebuggerFlavor>
+    <DebuggerFlavor>AppHostLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
 </Project>

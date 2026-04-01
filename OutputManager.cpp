@@ -17,6 +17,15 @@ HRESULT OutputManager::Initialize()
     return S_OK;
 }
 
+void OutputManager::PrewarmForSelection()
+{
+    // Refresh monitor list and ensure duplication threads are created before
+    // the user completes selection. This shifts one-time setup cost earlier.
+    m_outputsEnumerated = false;
+    EnumerateOutputs_();
+    EnsureThreadsCreated_();
+}
+
 void OutputManager::EnumerateOutputs_()
 {
     if (m_outputsEnumerated) return;
@@ -50,8 +59,7 @@ void OutputManager::EnumerateOutputs_()
 
 void OutputManager::EnsureThreadsCreated_()
 {
-    if (!m_duplicationThreads.empty()) return;
-    winvert4::Log("OM: creating duplication threads on demand");
+    winvert4::Log("OM: ensuring duplication threads for current outputs");
     ::Microsoft::WRL::ComPtr<IDXGIFactory1> factory;
     HRESULT hr = CreateDXGIFactory1(IID_PPV_ARGS(&factory));
     if (FAILED(hr)) { winvert4::Logf("OM.CreateDXGIFactory1 FAILED hr=0x%08X", hr); return; }
@@ -72,9 +80,13 @@ void OutputManager::EnsureThreadsCreated_()
             DXGI_OUTPUT_DESC outputDesc{};
             if (FAILED(output1->GetDesc(&outputDesc))) continue;
             std::wstring deviceName = outputDesc.DeviceName;
-            auto thread = std::make_unique<DuplicationThread>(adapter.Get(), output1.Get());
-            thread->Run();
-            m_duplicationThreads[deviceName] = std::move(thread);
+            if (m_duplicationThreads.find(deviceName) == m_duplicationThreads.end())
+            {
+                winvert4::Logf("OM: creating thread for output %ls", deviceName.c_str());
+                auto thread = std::make_unique<DuplicationThread>(adapter.Get(), output1.Get());
+                thread->Run();
+                m_duplicationThreads[deviceName] = std::move(thread);
+            }
         }
     }
 }
@@ -82,24 +94,41 @@ void OutputManager::EnsureThreadsCreated_()
 DuplicationThread* OutputManager::GetThreadForRect(const RECT& rc)
 {
     // Lazily create threads when the first effect window is shown
-    EnsureThreadsCreated_();
-    DuplicationThread* bestThread = nullptr;
-    LONG bestArea = 0;
-
-    for (auto const& [key, val] : m_duplicationThreads)
+    auto findBest = [this, &rc](LONG& outArea) -> DuplicationThread*
     {
-        const RECT& outputRect = val->GetOutputRect();
-        RECT intersection;
-        if (IntersectRect(&intersection, &rc, &outputRect))
+        DuplicationThread* bestThread = nullptr;
+        LONG bestArea = 0;
+        for (auto const& [key, val] : m_duplicationThreads)
         {
-            LONG area = (intersection.right - intersection.left) * (intersection.bottom - intersection.top);
-            if (area > bestArea)
+            const RECT& outputRect = val->GetOutputRect();
+            RECT intersection{};
+            if (IntersectRect(&intersection, &rc, &outputRect))
             {
-                bestArea = area;
-                bestThread = val.get();
+                LONG area = (intersection.right - intersection.left) * (intersection.bottom - intersection.top);
+                if (area > bestArea)
+                {
+                    bestArea = area;
+                    bestThread = val.get();
+                }
             }
         }
+        outArea = bestArea;
+        return bestThread;
+    };
+
+    EnsureThreadsCreated_();
+    LONG bestArea = 0;
+    DuplicationThread* bestThread = findBest(bestArea);
+    if (!bestThread)
+    {
+        // Display topology can change while stale duplication threads remain.
+        // Rebuild once and retry thread selection.
+        winvert4::Log("OM: no thread match; rebuilding duplication threads and retrying");
+        m_duplicationThreads.clear();
+        EnsureThreadsCreated_();
+        bestThread = findBest(bestArea);
     }
+
     if (bestThread)
     {
         winvert4::Logf("OM: GetThreadForRect rc=(%ld,%ld,%ld,%ld) -> thread=%p area=%ld",
@@ -116,29 +145,17 @@ DuplicationThread* OutputManager::GetThreadForRect(const RECT& rc)
 void OutputManager::GetIntersectingRects(const RECT& rc, std::vector<RECT>& outRects)
 {
     outRects.clear();
-    if (!m_duplicationThreads.empty())
+
+    // Always refresh lightweight output rectangles so monitor hot-plug/reorder
+    // is reflected immediately in region splitting.
+    m_outputsEnumerated = false;
+    EnumerateOutputs_();
+    for (auto const& rOut : m_outputRects)
     {
-        for (auto const& [key, val] : m_duplicationThreads)
+        RECT intersection{};
+        if (IntersectRect(&intersection, &rc, &rOut))
         {
-            const RECT& outputRect = val->GetOutputRect();
-            RECT intersection{};
-            if (IntersectRect(&intersection, &rc, &outputRect))
-            {
-                outRects.push_back(intersection);
-            }
-        }
-    }
-    else
-    {
-        // Use lightweight enumerated output rects
-        if (!m_outputsEnumerated) EnumerateOutputs_();
-        for (auto const& rOut : m_outputRects)
-        {
-            RECT intersection{};
-            if (IntersectRect(&intersection, &rc, &rOut))
-            {
-                outRects.push_back(intersection);
-            }
+            outRects.push_back(intersection);
         }
     }
     if (outRects.empty())

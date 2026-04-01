@@ -12,6 +12,9 @@ public:
     ~OutputManager();
 
     HRESULT Initialize();
+    // Prepare duplication threads ahead of first region creation so capture
+    // is warm when selection completes.
+    void PrewarmForSelection();
     DuplicationThread* GetThreadForRect(const RECT& rc);
     // Enumerate all output sub-rectangles that intersect the given virtual-desktop rect
     void GetIntersectingRects(const RECT& rc, std::vector<RECT>& outRects);

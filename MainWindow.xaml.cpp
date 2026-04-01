@@ -420,6 +420,10 @@ namespace winrt::Winvert4::implementation
         {
             m_previewBackup.erase(m_previewBackup.begin() + idx);
         }
+        if (idx < static_cast<int>(m_tabFilterSelections.size()))
+        {
+            m_tabFilterSelections.erase(m_tabFilterSelections.begin() + idx);
+        }
 
         // Remove tab and renumber headers
         items.RemoveAt(static_cast<uint32_t>(idx));
@@ -1580,6 +1584,10 @@ namespace
         {
             m_previewBackup.erase(m_previewBackup.begin() + idx);
         }
+        if (idx < static_cast<int>(m_tabFilterSelections.size()))
+        {
+            m_tabFilterSelections.erase(m_tabFilterSelections.begin() + idx);
+        }
 
         // Remove tab and renumber headers
         items.RemoveAt(static_cast<uint32_t>(idx));
@@ -1614,6 +1622,10 @@ namespace
         if (m_isSelecting) return;
         m_isSelecting = true;
         winvert4::Log("MainWindow: StartScreenSelection");
+
+        // Prewarm output capture threads on hotkey/selection start so first
+        // effect application is faster when selection completes.
+        if (m_outputManager) m_outputManager->PrewarmForSelection();
 
         WNDCLASSEXW wcex{ sizeof(WNDCLASSEXW) };
         wcex.style         = CS_HREDRAW | CS_VREDRAW;
@@ -1734,8 +1746,9 @@ namespace
             winvert4::Log("MainWindow: selection overlay destroyed (pre-dup)");
         }
 
-        // 2) Give DWM one present interval to composite without the overlay
-        ::Sleep(16);
+        // 2) Yield briefly so the overlay teardown can flush without adding
+        // a fixed 16ms stall to every add-zone action.
+        ::Sleep(1);
 
         winvert4::Logf("MainWindow: selection completed rect=(%ld,%ld,%ld,%ld)",
                        sel.left, sel.top, sel.right, sel.bottom);
@@ -2521,6 +2534,15 @@ namespace
                 if (auto& wnd = m_effectWindows[idx]) { wnd->Hide(); wnd.reset(); }
                 m_effectWindows.erase(m_effectWindows.begin() + idx);
             }
+            if (idx < static_cast<int>(m_effectWindowExtras.size()))
+            {
+                auto& extras = m_effectWindowExtras[idx];
+                for (auto& ew : extras)
+                {
+                    if (ew) { ew->Hide(); ew.reset(); }
+                }
+                m_effectWindowExtras.erase(m_effectWindowExtras.begin() + idx);
+            }
             if (idx < static_cast<int>(m_windowSettings.size()))
                 m_windowSettings.erase(m_windowSettings.begin() + idx);
             if (idx < static_cast<int>(m_windowHidden.size()))
@@ -2529,6 +2551,8 @@ namespace
                 m_hasPreviewBackup.erase(m_hasPreviewBackup.begin() + idx);
             if (idx < static_cast<int>(m_previewBackup.size()))
                 m_previewBackup.erase(m_previewBackup.begin() + idx);
+            if (idx < static_cast<int>(m_tabFilterSelections.size()))
+                m_tabFilterSelections.erase(m_tabFilterSelections.begin() + idx);
 
             items.RemoveAt(index);
             // Renumber headers
