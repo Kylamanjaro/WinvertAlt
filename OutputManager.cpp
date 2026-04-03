@@ -59,6 +59,7 @@ void OutputManager::EnumerateOutputs_()
 
 void OutputManager::EnsureThreadsCreated_()
 {
+    if (m_threadsInitialized) return;
     winvert4::Log("OM: ensuring duplication threads for current outputs");
     ::Microsoft::WRL::ComPtr<IDXGIFactory1> factory;
     HRESULT hr = CreateDXGIFactory1(IID_PPV_ARGS(&factory));
@@ -89,11 +90,13 @@ void OutputManager::EnsureThreadsCreated_()
             }
         }
     }
+    m_threadsInitialized = true;
 }
 
 DuplicationThread* OutputManager::GetThreadForRect(const RECT& rc)
 {
-    // Lazily create threads when the first effect window is shown
+    // Lazily create threads when the first effect window is shown.
+    // Avoid re-enumerating outputs/threads on every call.
     auto findBest = [this, &rc](LONG& outArea) -> DuplicationThread*
     {
         DuplicationThread* bestThread = nullptr;
@@ -116,7 +119,10 @@ DuplicationThread* OutputManager::GetThreadForRect(const RECT& rc)
         return bestThread;
     };
 
-    EnsureThreadsCreated_();
+    if (m_duplicationThreads.empty())
+    {
+        EnsureThreadsCreated_();
+    }
     LONG bestArea = 0;
     DuplicationThread* bestThread = findBest(bestArea);
     if (!bestThread)
@@ -125,6 +131,7 @@ DuplicationThread* OutputManager::GetThreadForRect(const RECT& rc)
         // Rebuild once and retry thread selection.
         winvert4::Log("OM: no thread match; rebuilding duplication threads and retrying");
         m_duplicationThreads.clear();
+        m_threadsInitialized = false;
         EnsureThreadsCreated_();
         bestThread = findBest(bestArea);
     }

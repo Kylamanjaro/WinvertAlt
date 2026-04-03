@@ -33,6 +33,8 @@ private:
 
     void EnsureSRVLocked_(ID3D11Texture2D* currentTex);
     void UpdateCBs_();
+    void EnsureOverlayResources_();
+    void EnsureBrightnessResources_();
 
 private:
     // Geometry/placement

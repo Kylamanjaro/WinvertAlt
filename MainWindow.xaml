@@ -207,35 +207,46 @@
                             </Expander>
                         </Border>
 
-                        <!-- Show FPS Card -->
+                        <!-- Startup Behavior Card -->
                         <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
-                            <!-- Match Expander: semi-transparent inner fill -->
-                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="2" Padding="2">
-                                <Grid ColumnSpacing="12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Show FPS overlay" Grid.Column="0" FontWeight="SemiBold" VerticalAlignment="Center" Margin="16,0,0,0"/>
-                                    <ToggleSwitch Grid.Column="1" x:Name="ShowFpsToggle" Margin="0,0,58,0" HorizontalAlignment="Right" OnContent="On" OffContent="Off" IsOn="True" Toggled="ShowFpsToggle_Toggled"/>
-                                </Grid>
-                            </Border>
+                            <Expander x:Name="StartupBehaviorExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" CornerRadius="2">
+                                <Expander.Header>
+                                    <TextBlock Text="Startup behavior" FontWeight="SemiBold"/>
+                                </Expander.Header>
+                                <StackPanel Spacing="8" Padding="8,4,0,8">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Run at startup" Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                        <ToggleSwitch x:Name="RunAtStartupToggle" Grid.Column="1" HorizontalAlignment="Right" OnContent="On" OffContent="Off" Toggled="RunAtStartupToggle_Toggled"/>
+                                    </Grid>
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Open UI on startup" Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                        <ToggleSwitch x:Name="OpenUiOnStartupToggle" Grid.Column="1" HorizontalAlignment="Right" OnContent="On" OffContent="Off" Toggled="OpenUiOnStartupToggle_Toggled"/>
+                                    </Grid>
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Show FPS overlay" Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                        <ToggleSwitch Grid.Column="1" x:Name="ShowFpsToggle" HorizontalAlignment="Right" OnContent="On" OffContent="Off" IsOn="True" Toggled="ShowFpsToggle_Toggled"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Expander>
                         </Border>
 
                         <!-- Hotkeys Card -->
                         <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
                             <Expander x:Name="HotkeysExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" CornerRadius="2">
                                 <Expander.Header>
-                                    <Grid ColumnSpacing="12">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="Run at Startup" Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold"/>
-                                        <ToggleSwitch x:Name="RunAtStartupToggle" Grid.Column="1" HorizontalAlignment="Right" OnContent="On" OffContent="Off" Toggled="RunAtStartupToggle_Toggled"/>
-                                    </Grid>
-                                    
-                                    
+                                    <TextBlock Text="Hotkeys" FontWeight="SemiBold"/>
                                 </Expander.Header>
                                 <StackPanel Spacing="8" Padding="8,4,0,8">
                                     <Grid ColumnSpacing="10" RowSpacing="5">

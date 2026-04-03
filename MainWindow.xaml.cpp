@@ -1,6 +1,7 @@
-﻿
+
 #include "pch.h"
 #include "MainWindow.xaml.h"
+#include "resource.h"
 #include "Log.h"
 #include "OutputManager.h"
 #include <winrt/Microsoft.UI.Windowing.h>
@@ -19,6 +20,8 @@
 #include <sstream>
 #include <locale>
 #include <iomanip>
+
+#pragma comment(lib, "Shell32.lib")
 
 #if __has_include("MainWindow.g.cpp")
 #include "MainWindow.g.cpp"
@@ -49,6 +52,13 @@ namespace
     constexpr int HOTKEY_INVERT_ID = 1;
     constexpr int HOTKEY_FILTER_ID = 2;
     constexpr int HOTKEY_REMOVE_ID = 3;
+    constexpr UINT kTrayIconId = 1;
+    constexpr UINT kTrayIconMessage = WM_APP + 42;
+    constexpr UINT kTrayCommandOpen = 10001;
+    constexpr UINT kTrayCommandExit = 10002;
+    // Stable tray icon identity so re-adds don't create duplicate entries.
+    constexpr GUID kTrayIconGuid =
+    { 0x5d4fde6f, 0xcd7b, 0x41f6, { 0x95, 0x15, 0x29, 0x31, 0x3d, 0x5d, 0xeb, 0xbb } };
     static const char* StartupTaskStateToString(winrt::Windows::ApplicationModel::StartupTaskState state)
     {
         using winrt::Windows::ApplicationModel::StartupTaskState;
@@ -120,9 +130,9 @@ LRESULT CALLBACK winrt::Winvert4::implementation::MainWindow::LowLevelKeyboardPr
     if (nCode >= 0 && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN))
     {
         auto p = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
+        auto self = MainWindow::s_samplingInstance;
         if (p->vkCode == VK_ESCAPE)
         {
-            auto self = MainWindow::s_samplingInstance;
             if (self && self->m_isSamplingColor)
             {
                 auto dq = self->DispatcherQueue();
@@ -294,9 +304,16 @@ namespace winrt::Winvert4::implementation
 
         // Testing hooks removed; external runner handles orchestration
 
-        // Hide the control panel until the first selection creates a window.
-        // We will show it in OnSelectionCompleted() once a region is added.
-        ::ShowWindow(m_mainHwnd, SW_HIDE);
+        // Startup visibility is user-configurable.
+        if (m_openUiOnStartup)
+        {
+            ::ShowWindow(m_mainHwnd, SW_SHOW);
+            m_controlPanelShownYet = true;
+        }
+        else
+        {
+            ::ShowWindow(m_mainHwnd, SW_HIDE);
+        }
 
         UpdateUIState();
 
@@ -322,6 +339,8 @@ namespace winrt::Winvert4::implementation
         }
 
         m_isAppInitialized = true;
+        m_taskbarCreatedMessage = RegisterWindowMessageW(L"TaskbarCreated");
+        InitializeTrayIcon();
         // Do not enable saving on startup; only enable after user opens Settings
 
         // Self-tests removed; external test app orchestrates validation
@@ -336,6 +355,7 @@ namespace winrt::Winvert4::implementation
     winrt::Winvert4::implementation::MainWindow::~MainWindow()
     {
         // TODO: Save settings
+        RemoveTrayIcon();
         RemoveWindowSubclass(m_mainHwnd, &MainWindow::WindowSubclassProc, 1);
         Gdiplus::GdiplusShutdown(m_gdiplusToken);
     }
@@ -557,6 +577,7 @@ namespace winrt::Winvert4::implementation
         // Safely collapse any expander if it exists in the tree
         if (auto expander = BrightnessExpander()) expander.IsExpanded(false);
         if (SelectionColorExpander()) SelectionColorExpander().IsExpanded(false);
+        if (auto expander = StartupBehaviorExpander()) expander.IsExpanded(false);
         //if (UpdateRateExpander()) UpdateRateExpander().IsExpanded(false);
         if (HotkeysExpander()) HotkeysExpander().IsExpanded(false);
         // Custom Filters collapsed by default on entry
@@ -1146,6 +1167,15 @@ namespace winrt::Winvert4::implementation
         SaveAppState();
     }
 
+    void winrt::Winvert4::implementation::MainWindow::OpenUiOnStartupToggle_Toggled(IInspectable const&, RoutedEventArgs const&)
+    {
+        if (auto toggle = OpenUiOnStartupToggle())
+        {
+            m_openUiOnStartup = toggle.IsOn();
+            SaveAppState();
+        }
+    }
+
     void winrt::Winvert4::implementation::MainWindow::RebindInvertHotkeyButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
         m_rebindingState = RebindingState::Invert;
@@ -1488,6 +1518,124 @@ namespace
         UpdateAllHotkeyText();
     }
 
+    void winrt::Winvert4::implementation::MainWindow::InitializeTrayIcon()
+    {
+        if (!m_mainHwnd) return;
+
+        if (!m_trayIconHandle)
+        {
+            m_trayIconHandle = static_cast<HICON>(LoadImageW(
+                GetModuleHandleW(nullptr),
+                MAKEINTRESOURCEW(IDI_ICON1),
+                IMAGE_ICON,
+                GetSystemMetrics(SM_CXSMICON),
+                GetSystemMetrics(SM_CYSMICON),
+                LR_DEFAULTCOLOR));
+
+            // Fallback to EXE-associated icon if resource load fails.
+            if (!m_trayIconHandle)
+            {
+                wchar_t modulePath[MAX_PATH] = {};
+                SHFILEINFOW sfi{};
+                if (GetModuleFileNameW(nullptr, modulePath, _countof(modulePath)) > 0 &&
+                    SHGetFileInfoW(modulePath, 0, &sfi, sizeof(sfi), SHGFI_ICON | SHGFI_SMALLICON))
+                {
+                    m_trayIconHandle = sfi.hIcon;
+                }
+            }
+            if (!m_trayIconHandle) m_trayIconHandle = LoadIconW(nullptr, IDI_APPLICATION);
+        }
+
+        // Best-effort cleanup for any previously-registered tray identities.
+        NOTIFYICONDATAW cleanupId{};
+        cleanupId.cbSize = sizeof(cleanupId);
+        cleanupId.hWnd = m_mainHwnd;
+        cleanupId.uID = kTrayIconId;
+        Shell_NotifyIconW(NIM_DELETE, &cleanupId);
+
+        NOTIFYICONDATAW cleanupGuid{};
+        cleanupGuid.cbSize = sizeof(cleanupGuid);
+        cleanupGuid.hWnd = m_mainHwnd;
+        cleanupGuid.uFlags = NIF_GUID;
+        cleanupGuid.guidItem = kTrayIconGuid;
+        Shell_NotifyIconW(NIM_DELETE, &cleanupGuid);
+
+        ZeroMemory(&m_trayIconData, sizeof(m_trayIconData));
+        m_trayIconData.cbSize = sizeof(m_trayIconData);
+        m_trayIconData.hWnd = m_mainHwnd;
+        m_trayIconData.uID = kTrayIconId;
+        m_trayIconData.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_GUID;
+        m_trayIconData.guidItem = kTrayIconGuid;
+        m_trayIconData.uCallbackMessage = kTrayIconMessage;
+        m_trayIconData.hIcon = m_trayIconHandle;
+        lstrcpynW(m_trayIconData.szTip, L"Winvert", _countof(m_trayIconData.szTip));
+
+        m_trayIconAdded = !!Shell_NotifyIconW(NIM_ADD, &m_trayIconData);
+        if (m_trayIconAdded)
+        {
+            m_trayIconData.uVersion = NOTIFYICON_VERSION_4;
+            Shell_NotifyIconW(NIM_SETVERSION, &m_trayIconData);
+        }
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::RemoveTrayIcon()
+    {
+        if (m_trayIconAdded)
+        {
+            Shell_NotifyIconW(NIM_DELETE, &m_trayIconData);
+            m_trayIconAdded = false;
+        }
+        ZeroMemory(&m_trayIconData, sizeof(m_trayIconData));
+        if (m_trayIconHandle)
+        {
+            DestroyIcon(m_trayIconHandle);
+            m_trayIconHandle = nullptr;
+        }
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::ShowMainWindowFromTray()
+    {
+        if (!m_mainHwnd) return;
+        ::ShowWindow(m_mainHwnd, SW_SHOW);
+        ::SetForegroundWindow(m_mainHwnd);
+        m_controlPanelShownYet = true;
+        UpdateUIState();
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::ShowTrayMenu()
+    {
+        if (!m_mainHwnd) return;
+        HMENU menu = CreatePopupMenu();
+        if (!menu) return;
+
+        AppendMenuW(menu, MF_STRING, kTrayCommandOpen, L"Open Winvert");
+        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(menu, MF_STRING, kTrayCommandExit, L"Exit");
+
+        POINT pt{};
+        GetCursorPos(&pt);
+        SetForegroundWindow(m_mainHwnd);
+        UINT cmd = TrackPopupMenu(
+            menu,
+            TPM_RIGHTBUTTON | TPM_RETURNCMD,
+            pt.x, pt.y, 0,
+            m_mainHwnd,
+            nullptr);
+        DestroyMenu(menu);
+
+        if (cmd == kTrayCommandOpen)
+        {
+            ShowMainWindowFromTray();
+        }
+        else if (cmd == kTrayCommandExit)
+        {
+            SaveAppState();
+            m_isClosing = true;
+            RemoveTrayIcon();
+            DestroyWindow(m_mainHwnd);
+        }
+    }
+
     void winrt::Winvert4::implementation::MainWindow::OnInvertHotkeyPressed()
     {
         m_pendingEffect = PendingEffect::Invert;
@@ -1573,6 +1721,13 @@ namespace
             winvert4::Logf("MainWindow: selection HWND=%p rect=(%d,%d %dx%d)", (void*)m_selectionHwnd, vx, vy, vw, vh);
             ShowWindow(m_selectionHwnd, SW_SHOW);
             SetForegroundWindow(m_selectionHwnd);
+            // If the control panel is visible, keep it interactive above the
+            // frozen full-screen selection overlay.
+            if (m_mainHwnd && ::IsWindowVisible(m_mainHwnd))
+            {
+                ::SetWindowPos(m_mainHwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOACTIVATE);
+            }
             // Capture the screen AFTER the window is visible.
             CaptureScreenBitmap();
             InvalidateRect(m_selectionHwnd, nullptr, FALSE); // Trigger a repaint with the new bitmap.
@@ -1581,6 +1736,12 @@ namespace
         {
             winvert4::Log("MainWindow: selection CreateWindowExW failed");
             m_isSelecting = false;
+            if (s_keyboardHook)
+            {
+                UnhookWindowsHookEx(s_keyboardHook);
+                s_keyboardHook = nullptr;
+                if (!m_isSamplingColor && s_samplingInstance == this) s_samplingInstance = nullptr;
+            }
         }
     }
 
@@ -1749,15 +1910,22 @@ namespace
         m_effectWindows.push_back(std::move(newWindow));
         m_effectWindowExtras.push_back(std::move(extras));
 
-        // Reveal the control panel window after first selection is created
+        // First-run UX: reveal the control panel after the first successful
+        // region is created so users discover settings/tray behavior.
+        // After that, keep the user's chosen visibility (no forced hide).
         if (!m_controlPanelShownYet)
         {
             ::ShowWindow(m_mainHwnd, SW_SHOW);
-            winvert4::Log("MainWindow: ShowWindow(SW_SHOW) control panel");
+            ::SetForegroundWindow(m_mainHwnd);
             m_controlPanelShownYet = true;
-            UpdateUIState();
-        
-            SetWindowSize(360, 120);
+        }
+        UpdateUIState();
+        SetWindowSize(360, 120);
+        // Return to normal z-order after selection completes.
+        if (m_mainHwnd)
+        {
+            ::SetWindowPos(m_mainHwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
     }
 
@@ -1857,6 +2025,12 @@ namespace
                     {
                         self->m_isSamplingColor = false;
                         if (auto btn = self->ColorMapSampleButton()) { btn.Content(box_value(L"Sample")); btn.IsEnabled(true); }
+                    }
+                    if (MainWindow::s_keyboardHook)
+                    {
+                        UnhookWindowsHookEx(MainWindow::s_keyboardHook);
+                        MainWindow::s_keyboardHook = nullptr;
+                        if (!self->m_isSamplingColor && MainWindow::s_samplingInstance == self) MainWindow::s_samplingInstance = nullptr;
                     }
                 }
                 DestroyWindow(hwnd);
@@ -2035,6 +2209,7 @@ namespace
         // Selection color toggle + picker
         if (auto tSel = SelectionColorEnableToggle()) tSel.IsOn(m_useCustomSelectionColor);
         ApplySelectionColorToPicker_();
+        if (auto tOpen = OpenUiOnStartupToggle()) tOpen.IsOn(m_openUiOnStartup);
         // FPS toggle in settings card
         if (auto tFps = ShowFpsToggle()) tFps.IsOn(m_showFpsOverlay);
         // Brightness protection delay + luma weights and color map preserve toggle
@@ -2525,6 +2700,13 @@ namespace
         {
             return DefSubclassProc(hWnd, uMsg, wParam, lParam);
         }
+        if (pThis->m_taskbarCreatedMessage != 0 && uMsg == pThis->m_taskbarCreatedMessage)
+        {
+            // Explorer restarted; recreate tray icon.
+            pThis->RemoveTrayIcon();
+            pThis->InitializeTrayIcon();
+            return 0;
+        }
 
         if (pThis->m_rebindingState != RebindingState::None) {
             if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) {
@@ -2567,6 +2749,22 @@ namespace
         }
 
         switch (uMsg) {
+        case kTrayIconMessage:
+            {
+            const UINT trayEvent = LOWORD(static_cast<DWORD_PTR>(lParam));
+            if (trayEvent == NIN_SELECT || trayEvent == NIN_KEYSELECT ||
+                trayEvent == WM_LBUTTONUP || trayEvent == WM_LBUTTONDBLCLK)
+            {
+                pThis->ShowMainWindowFromTray();
+                return 0;
+            }
+            if (trayEvent == WM_RBUTTONUP || trayEvent == WM_CONTEXTMENU)
+            {
+                pThis->ShowTrayMenu();
+                return 0;
+            }
+            break;
+            }
         case WM_HOTKEY:
             {
                 // Defer action to the dispatcher to avoid mutating XAML/TabView
@@ -2586,11 +2784,17 @@ namespace
         case WM_CLOSE:
             // Keep Winvert resident in the background; closing the control panel
             // should not terminate hotkeys/startup behavior.
+            if (pThis->m_isClosing)
+            {
+                pThis->RemoveTrayIcon();
+                return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+            }
             pThis->SaveAppState();
             ::ShowWindow(pThis->m_mainHwnd, SW_HIDE);
             return 0;
         case WM_DESTROY:
             pThis->m_isClosing = true;
+            pThis->RemoveTrayIcon();
             PostQuitMessage(0);
             break;
         }
@@ -3297,6 +3501,7 @@ void winrt::Winvert4::implementation::MainWindow::SaveAppState()
             root.SetNamedValue(L"version", JsonValue::CreateNumberValue(1));
             // Toggles
             JsonObject toggles; toggles.SetNamedValue(L"showFps", JsonValue::CreateBooleanValue(m_showFpsOverlay));
+            toggles.SetNamedValue(L"openUiOnStartup", JsonValue::CreateBooleanValue(m_openUiOnStartup));
             toggles.SetNamedValue(L"selectionColorEnabled", JsonValue::CreateBooleanValue(m_useCustomSelectionColor));
             toggles.SetNamedValue(L"colorMapPreserve", JsonValue::CreateBooleanValue(m_colorMapPreserveToggleState));
             root.SetNamedValue(L"toggles", toggles);
@@ -3395,6 +3600,9 @@ void winrt::Winvert4::implementation::MainWindow::LoadAppState()
                         if (auto t = o.TryLookup(L"showFps")) {
                             readBool(t, m_showFpsOverlay);
                             winvert4::Logf("LoadAppState: showFps=%d", m_showFpsOverlay ? 1 : 0);
+                        }
+                        if (auto t = o.TryLookup(L"openUiOnStartup")) {
+                            readBool(t, m_openUiOnStartup);
                         }
                         if (auto t = o.TryLookup(L"selectionColorEnabled")) {
                             using winrt::Windows::Data::Json::JsonValueType;
@@ -4031,6 +4239,7 @@ void winrt::Winvert4::implementation::MainWindow::WriteJsonSettings_()
         std::wstring jsonPath = std::wstring(folder.Path().c_str()) + L"\\settings.json";
         JsonObject root; root.SetNamedValue(L"version", JsonValue::CreateNumberValue(1));
         JsonObject toggles; toggles.SetNamedValue(L"showFps", JsonValue::CreateBooleanValue(m_showFpsOverlay));
+        toggles.SetNamedValue(L"openUiOnStartup", JsonValue::CreateBooleanValue(m_openUiOnStartup));
         toggles.SetNamedValue(L"selectionColorEnabled", JsonValue::CreateBooleanValue(m_useCustomSelectionColor));
         toggles.SetNamedValue(L"colorMapPreserve", JsonValue::CreateBooleanValue(m_colorMapPreserveToggleState));
         root.SetNamedValue(L"toggles", toggles);

@@ -25,6 +25,7 @@ private:
     // Lightweight cache of output rectangles (populated without creating D3D devices)
     std::vector<RECT> m_outputRects;
     bool m_outputsEnumerated{ false };
+    bool m_threadsInitialized{ false };
 
     void EnumerateOutputs_();
     void EnsureThreadsCreated_();

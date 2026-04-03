@@ -4,6 +4,7 @@
 #include "OutputManager.h"
 #include <vector>
 #include <memory>
+#include <shellapi.h>
 #include "EffectSettings.h"
 
 namespace winrt::Winvert4::implementation
@@ -35,6 +36,7 @@ namespace winrt::Winvert4::implementation
         void LumaWeight_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
         void BrightnessDelay_ValueChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
         void ShowFpsToggle_Toggled(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void OpenUiOnStartupToggle_Toggled(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void RebindInvertHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void RebindFilterHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void RebindRemoveHotkeyButton_Click(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
@@ -150,6 +152,7 @@ namespace winrt::Winvert4::implementation
         // --- Settings ---
         int m_fpsSetting{ 0 };
         bool m_showFpsOverlay{ false };
+        bool m_openUiOnStartup{ false };
         COLORREF m_selectionColor{ RGB(255, 0, 0) };
         bool m_useCustomSelectionColor{ false };
         bool m_controlPanelShownYet{ false };
@@ -174,6 +177,10 @@ namespace winrt::Winvert4::implementation
         PendingEffect m_pendingEffect{ PendingEffect::None };
 
         void RegisterAllHotkeys();
+        void InitializeTrayIcon();
+        void RemoveTrayIcon();
+        void ShowTrayMenu();
+        void ShowMainWindowFromTray();
         void OnInvertHotkeyPressed();
         void OnFilterHotkeyPressed();
         void OnRemoveHotkeyPressed();
@@ -263,6 +270,12 @@ namespace winrt::Winvert4::implementation
         bool m_isInitializingStartupToggle{ false };
         bool m_isClosing{ false };
         bool m_isSavingEnabled{ false };
+
+        // Tray icon state
+        NOTIFYICONDATAW m_trayIconData{};
+        bool m_trayIconAdded{ false };
+        HICON m_trayIconHandle{ nullptr };
+        UINT m_taskbarCreatedMessage{ 0 };
 
         // Currently selected swatch button for live updates
         winrt::Microsoft::UI::Xaml::Controls::Button m_selectedSwatchButton{ nullptr };

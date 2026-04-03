@@ -143,6 +143,10 @@ LRESULT CALLBACK EffectWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
     if (msg == WM_NCHITTEST) {
         return HTTRANSPARENT;
     }
+    if (msg == WM_MOUSEACTIVATE) {
+        // Never activate on click; keep focus/input with underlying windows.
+        return MA_NOACTIVATE;
+    }
 
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
@@ -364,6 +368,17 @@ void EffectWindow::CreateAndShow()
     if (!m_hwnd) { winvert4::Log("EffectWindow::RenderThreadProc failed to create HWND"); return; }
     winvert4::Logf("EW: created HWND=%p size=(%dx%d)", (void*)m_hwnd, w, h);
 
+    // Re-assert click-through + no-activate styles after creation. Some systems
+    // are sensitive to style/state ordering for topmost layered overlays.
+    {
+        LONG_PTR ex = GetWindowLongPtrW(m_hwnd, GWL_EXSTYLE);
+        ex |= (WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT);
+        SetWindowLongPtrW(m_hwnd, GWL_EXSTYLE, ex);
+        SetWindowPos(
+            m_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    }
+
     // Make the window click-through via HTTRANSPARENT in WndProc.
     // Use LWA_ALPHA (opaque) instead of COLORKEY to avoid the entire window
     // becoming fully transparent when the first clear is black.
@@ -391,43 +406,6 @@ void EffectWindow::CreateAndShow()
         return;
     }
     winvert4::Log("EW: swapchain created");
-
-    // Initialize D2D/DirectWrite for FPS overlay
-    if (!m_d2dFactory)
-    {
-        D2D1_FACTORY_OPTIONS opts{};
-        D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory1), &opts, reinterpret_cast<void**>(m_d2dFactory.ReleaseAndGetAddressOf()));
-    }
-    if (!m_dwriteFactory)
-    {
-        DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(m_dwriteFactory.ReleaseAndGetAddressOf()));
-    }
-    if (!m_d2dDevice)
-    {
-        m_d2dFactory->CreateDevice(dxgiDevice.Get(), &m_d2dDevice);
-    }
-    if (!m_d2dCtx)
-    {
-        m_d2dDevice->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &m_d2dCtx);
-        if (m_d2dCtx)
-        {
-            m_d2dCtx->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
-            if (!m_textBrush)
-            {
-                m_d2dCtx->CreateSolidColorBrush(D2D1::ColorF(1.f, 1.f, 1.f, 0.85f), &m_textBrush);
-            }
-        }
-    }
-    if (!m_textFormat && m_dwriteFactory)
-    {
-        m_dwriteFactory->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD,
-            DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 14.0f, L"en-us", &m_textFormat);
-        if (m_textFormat)
-        {
-            m_textFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_TRAILING);
-            m_textFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
-        }
-    }
 
     // Init FPS timer (frequency for converting duplication QPC to seconds)
     QueryPerformanceFrequency(&m_qpcFreq);
@@ -511,41 +489,107 @@ void EffectWindow::CreateAndShow()
         }
     }
 
-    // Prepare luminance mip resources for brightness protection
+    if (m_settings.showFpsOverlay)
     {
-        const int w = m_desktopRect.right - m_desktopRect.left;
-        const int h = m_desktopRect.bottom - m_desktopRect.top;
-        UINT maxDim = (UINT)(w > h ? w : h);
-        UINT mips = 1; while ((1u << mips) < maxDim) ++mips; // ceil(log2(maxDim))
-        m_mipLastLevel = mips - 1;
-
-        D3D11_TEXTURE2D_DESC td{};
-        td.Width = w; td.Height = h; td.MipLevels = mips; td.ArraySize = 1;
-        td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-        td.SampleDesc.Count = 1;
-        td.Usage = D3D11_USAGE_DEFAULT;
-        td.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
-        td.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
-        m_d3d->CreateTexture2D(&td, nullptr, &m_mipTex);
-        if (m_mipTex)
-        {
-            D3D11_SHADER_RESOURCE_VIEW_DESC sd{};
-            sd.Format = td.Format;
-            sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-            sd.Texture2D.MipLevels = td.MipLevels;
-            m_d3d->CreateShaderResourceView(m_mipTex.Get(), &sd, &m_mipSrv);
-        }
-
-        // 1x1 staging readback
-        D3D11_TEXTURE2D_DESC rd{};
-        rd.Width = 1; rd.Height = 1; rd.MipLevels = 1; rd.ArraySize = 1;
-        rd.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-        rd.SampleDesc.Count = 1;
-        rd.Usage = D3D11_USAGE_STAGING;
-        rd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-        m_d3d->CreateTexture2D(&rd, nullptr, &m_mipReadback1x1);
+        EnsureOverlayResources_();
+    }
+    if (m_settings.isBrightnessProtectionEnabled)
+    {
+        EnsureBrightnessResources_();
     }
     winvert4::Log("EW.CreateAndShow: end");
+}
+
+void EffectWindow::EnsureOverlayResources_()
+{
+    if (!m_d3d || m_d2dCtx) return;
+
+    ComPtr<IDXGIDevice> dxgiDevice;
+    if (FAILED(m_d3d.As(&dxgiDevice)) || !dxgiDevice) return;
+
+    if (!m_d2dFactory)
+    {
+        D2D1_FACTORY_OPTIONS opts{};
+        D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory1), &opts, reinterpret_cast<void**>(m_d2dFactory.ReleaseAndGetAddressOf()));
+    }
+    if (!m_dwriteFactory)
+    {
+        DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(m_dwriteFactory.ReleaseAndGetAddressOf()));
+    }
+    if (!m_d2dFactory || !m_dwriteFactory) return;
+
+    if (!m_d2dDevice)
+    {
+        m_d2dFactory->CreateDevice(dxgiDevice.Get(), &m_d2dDevice);
+    }
+    if (!m_d2dDevice) return;
+
+    if (!m_d2dCtx)
+    {
+        m_d2dDevice->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &m_d2dCtx);
+        if (m_d2dCtx)
+        {
+            m_d2dCtx->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+        }
+    }
+    if (m_d2dCtx && !m_textBrush)
+    {
+        m_d2dCtx->CreateSolidColorBrush(D2D1::ColorF(1.f, 1.f, 1.f, 0.85f), &m_textBrush);
+    }
+    if (!m_textFormat)
+    {
+        m_dwriteFactory->CreateTextFormat(
+            L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD,
+            DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 14.0f, L"en-us", &m_textFormat);
+        if (m_textFormat)
+        {
+            m_textFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_TRAILING);
+            m_textFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
+        }
+    }
+}
+
+void EffectWindow::EnsureBrightnessResources_()
+{
+    if (!m_d3d || m_mipTex) return;
+
+    const int w = m_desktopRect.right - m_desktopRect.left;
+    const int h = m_desktopRect.bottom - m_desktopRect.top;
+    UINT maxDim = (UINT)(w > h ? w : h);
+    UINT mips = 1;
+    while ((1u << mips) < maxDim) ++mips;
+    m_mipLastLevel = mips - 1;
+
+    D3D11_TEXTURE2D_DESC td{};
+    td.Width = w;
+    td.Height = h;
+    td.MipLevels = mips;
+    td.ArraySize = 1;
+    td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_DEFAULT;
+    td.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+    td.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+    m_d3d->CreateTexture2D(&td, nullptr, &m_mipTex);
+    if (m_mipTex)
+    {
+        D3D11_SHADER_RESOURCE_VIEW_DESC sd{};
+        sd.Format = td.Format;
+        sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+        sd.Texture2D.MipLevels = td.MipLevels;
+        m_d3d->CreateShaderResourceView(m_mipTex.Get(), &sd, &m_mipSrv);
+    }
+
+    D3D11_TEXTURE2D_DESC rd{};
+    rd.Width = 1;
+    rd.Height = 1;
+    rd.MipLevels = 1;
+    rd.ArraySize = 1;
+    rd.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    rd.SampleDesc.Count = 1;
+    rd.Usage = D3D11_USAGE_STAGING;
+    rd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    m_d3d->CreateTexture2D(&rd, nullptr, &m_mipReadback1x1);
 }
 
 void EffectWindow::Render(ID3D11Texture2D* frame, unsigned long long lastPresentQpc)
@@ -555,6 +599,15 @@ void EffectWindow::Render(ID3D11Texture2D* frame, unsigned long long lastPresent
     if (m_isHidden) { winvert4::Log("EW.Render early exit: hidden"); return; }
     if (!frame) { winvert4::Log("EW.Render early exit: frame=null"); return; }
     if (!m_swapChain) { winvert4::Log("EW.Render early exit: swapchain=null"); return; }
+
+    if (m_settings.showFpsOverlay)
+    {
+        EnsureOverlayResources_();
+    }
+    if (m_settings.isBrightnessProtectionEnabled)
+    {
+        EnsureBrightnessResources_();
+    }
 
     // Ensure SRV reflects current texture
     EnsureSRVLocked_(frame);
