@@ -1301,6 +1301,8 @@ namespace
             if (auto v = root.TryLookup(L"toggles")) if (v.ValueType()==JsonValueType::Object){ auto o=v.GetObject();
                 auto eqb=[&](const wchar_t* k, bool actual){ if (auto t=o.TryLookup(k)){ bool exp=false; switch(t.ValueType()){case JsonValueType::Boolean: exp=t.GetBoolean(); break; case JsonValueType::Number: exp=t.GetNumber()!=0.0; break; case JsonValueType::String:{ auto s=t.GetString(); std::wstring ws(s.c_str()); for(auto&ch:ws)ch=(wchar_t)towlower(ch); exp=(ws==L"true"||ws==L"1"||ws==L"yes"||ws==L"on"); break;} default: break;} if (exp!=actual){ std::string kn(k,k+wcslen(k)); winvert4::Logf("SelfTest: toggles.%s mismatch", kn.c_str()); if(outLog){ outLog->append("mismatch toggles."); outLog->append(kn); outLog->append("\n"); } ok=false; } } };
                 eqb(L"showFps", m_showFpsOverlay);
+                eqb(L"openUiOnStartup", m_openUiOnStartup);
+                eqb(L"runAtStartup", m_runAtStartup);
                 eqb(L"selectionColorEnabled", m_useCustomSelectionColor);
                 eqb(L"colorMapPreserve", m_colorMapPreserveToggleState);
             }
@@ -1571,6 +1573,12 @@ namespace
         lstrcpynW(m_trayIconData.szTip, L"Winvert", _countof(m_trayIconData.szTip));
 
         m_trayIconAdded = !!Shell_NotifyIconW(NIM_ADD, &m_trayIconData);
+        if (!m_trayIconAdded)
+        {
+            // Fallback for environments where GUID-based tray registration fails.
+            m_trayIconData.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+            m_trayIconAdded = !!Shell_NotifyIconW(NIM_ADD, &m_trayIconData);
+        }
         if (m_trayIconAdded)
         {
             m_trayIconData.uVersion = NOTIFYICON_VERSION_4;
@@ -3502,6 +3510,7 @@ void winrt::Winvert4::implementation::MainWindow::SaveAppState()
             // Toggles
             JsonObject toggles; toggles.SetNamedValue(L"showFps", JsonValue::CreateBooleanValue(m_showFpsOverlay));
             toggles.SetNamedValue(L"openUiOnStartup", JsonValue::CreateBooleanValue(m_openUiOnStartup));
+            toggles.SetNamedValue(L"runAtStartup", JsonValue::CreateBooleanValue(m_runAtStartup));
             toggles.SetNamedValue(L"selectionColorEnabled", JsonValue::CreateBooleanValue(m_useCustomSelectionColor));
             toggles.SetNamedValue(L"colorMapPreserve", JsonValue::CreateBooleanValue(m_colorMapPreserveToggleState));
             root.SetNamedValue(L"toggles", toggles);
@@ -3603,6 +3612,9 @@ void winrt::Winvert4::implementation::MainWindow::LoadAppState()
                         }
                         if (auto t = o.TryLookup(L"openUiOnStartup")) {
                             readBool(t, m_openUiOnStartup);
+                        }
+                        if (auto t = o.TryLookup(L"runAtStartup")) {
+                            readBool(t, m_runAtStartup);
                         }
                         if (auto t = o.TryLookup(L"selectionColorEnabled")) {
                             using winrt::Windows::Data::Json::JsonValueType;
@@ -4140,6 +4152,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewColorMapToggle_Unchecke
             auto state = task.State();
             bool isOn = (state == StartupTaskState::Enabled || state == StartupTaskState::EnabledByPolicy);
             bool canToggle = (state != StartupTaskState::DisabledByPolicy);
+            m_runAtStartup = isOn;
             auto dq = DispatcherQueue();
             dq.TryEnqueue([this, isOn, canToggle]()
             {
@@ -4184,6 +4197,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewColorMapToggle_Unchecke
                     {
                         auto res = co_await task.RequestEnableAsync();
                         bool isOn = (res == StartupTaskState::Enabled || res == StartupTaskState::EnabledByPolicy);
+                        self->m_runAtStartup = isOn;
                         winvert4::Logf("StartupTask toggle: requestEnable result=%s isOn=%d",
                             StartupTaskStateToString(res), isOn ? 1 : 0);
                         self->DispatcherQueue().TryEnqueue([self, isOn]()
@@ -4191,12 +4205,18 @@ void winrt::Winvert4::implementation::MainWindow::PreviewColorMapToggle_Unchecke
                             self->m_isInitializingStartupToggle = true;
                             if (auto t = self->RunAtStartupToggle()) t.IsOn(isOn);
                             self->m_isInitializingStartupToggle = false;
+                            self->SaveAppState();
                         });
                     }
                     else
                     {
                         task.Disable();
+                        self->m_runAtStartup = false;
                         winvert4::Log("StartupTask toggle: disable requested");
+                        self->DispatcherQueue().TryEnqueue([self]()
+                        {
+                            self->SaveAppState();
+                        });
                     }
                     auto after = task.State();
                     winvert4::Logf("StartupTask toggle: before=%s after=%s wantEnable=%d",
@@ -4211,6 +4231,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewColorMapToggle_Unchecke
                         self->m_isInitializingStartupToggle = true;
                         if (auto t = self->RunAtStartupToggle()) t.IsOn(!wantEnable);
                         self->m_isInitializingStartupToggle = false;
+                        self->m_runAtStartup = !wantEnable;
                     });
                 }
                 catch (...)
@@ -4221,6 +4242,7 @@ void winrt::Winvert4::implementation::MainWindow::PreviewColorMapToggle_Unchecke
                         self->m_isInitializingStartupToggle = true;
                         if (auto t = self->RunAtStartupToggle()) t.IsOn(!wantEnable);
                         self->m_isInitializingStartupToggle = false;
+                        self->m_runAtStartup = !wantEnable;
                     });
                 }
             }
@@ -4240,6 +4262,7 @@ void winrt::Winvert4::implementation::MainWindow::WriteJsonSettings_()
         JsonObject root; root.SetNamedValue(L"version", JsonValue::CreateNumberValue(1));
         JsonObject toggles; toggles.SetNamedValue(L"showFps", JsonValue::CreateBooleanValue(m_showFpsOverlay));
         toggles.SetNamedValue(L"openUiOnStartup", JsonValue::CreateBooleanValue(m_openUiOnStartup));
+        toggles.SetNamedValue(L"runAtStartup", JsonValue::CreateBooleanValue(m_runAtStartup));
         toggles.SetNamedValue(L"selectionColorEnabled", JsonValue::CreateBooleanValue(m_useCustomSelectionColor));
         toggles.SetNamedValue(L"colorMapPreserve", JsonValue::CreateBooleanValue(m_colorMapPreserveToggleState));
         root.SetNamedValue(L"toggles", toggles);

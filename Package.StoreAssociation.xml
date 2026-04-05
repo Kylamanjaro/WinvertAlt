@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <StoreAssociation xmlns="http://schemas.microsoft.com/appx/2010/storeassociation">
   <Publisher>CN=9791A8AE-764C-4C9A-BE8C-3E8527720751</Publisher>
-  <PublisherDisplayName>Vibe</PublisherDisplayName>
+  <PublisherDisplayName>CodeMaxx</PublisherDisplayName>
   <DeveloperAccountType>MSA</DeveloperAccountType>
   <GeneratePackageHash>http://www.w3.org/2001/04/xmlenc#sha256</GeneratePackageHash>
   <SupportedLocales>

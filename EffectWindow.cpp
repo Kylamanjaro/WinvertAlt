@@ -11,6 +11,9 @@ using ::Microsoft::WRL::ComPtr;
 
 namespace {
     constexpr wchar_t kEffectWndClass[] = L"Winvert4_EffectWindow";
+#if defined(_DEBUG) && defined(WINVERT_OBS_MIRROR)
+    constexpr wchar_t kEffectMirrorWndClass[] = L"Winvert4_EffectMirrorWindow";
+#endif
 
     static const float kFSVerts[6] = { -1.f,-1.f,  -1.f,3.f,  3.f,-1.f };
 
@@ -135,6 +138,49 @@ namespace {
         outPs = s_psBlob;
         return true;
     }
+
+#if defined(_DEBUG) && defined(WINVERT_OBS_MIRROR)
+    static bool TryFindNonIntersectingMonitorRect(const RECT& sourceRect, RECT& outRect)
+    {
+        struct EnumCtx
+        {
+            RECT src{};
+            RECT found{};
+            bool hasFound{ false };
+        } ctx{};
+        ctx.src = sourceRect;
+
+        EnumDisplayMonitors(
+            nullptr,
+            nullptr,
+            [](HMONITOR hMon, HDC, LPRECT, LPARAM lParam) -> BOOL
+            {
+                auto* c = reinterpret_cast<EnumCtx*>(lParam);
+                MONITORINFO mi{};
+                mi.cbSize = sizeof(mi);
+                if (!GetMonitorInfoW(hMon, &mi))
+                {
+                    return TRUE;
+                }
+                RECT inter{};
+                if (!IntersectRect(&inter, &c->src, &mi.rcMonitor))
+                {
+                    c->found = mi.rcMonitor;
+                    c->hasFound = true;
+                    return FALSE;
+                }
+                return TRUE;
+            },
+            reinterpret_cast<LPARAM>(&ctx));
+
+        if (!ctx.hasFound)
+        {
+            return false;
+        }
+        outRect = ctx.found;
+        return true;
+    }
+#endif
 }
 
 LRESULT CALLBACK EffectWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -148,6 +194,16 @@ LRESULT CALLBACK EffectWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
         return MA_NOACTIVATE;
     }
 
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+LRESULT CALLBACK EffectWindow::MirrorWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    if (msg == WM_CLOSE)
+    {
+        ShowWindow(hwnd, SW_HIDE);
+        return 0;
+    }
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
@@ -246,6 +302,7 @@ void EffectWindow::Hide()
     m_ps.Reset();
     m_vs.Reset();
     m_rtv.Reset();
+    m_mirrorSwapChain.Reset();
     m_swapChain.Reset();
     m_factory.Reset();
     m_deferredCtx.Reset();
@@ -253,6 +310,7 @@ void EffectWindow::Hide()
     m_d3d.Reset();
 
     // Destroy window
+    if (m_mirrorHwnd) { DestroyWindow(m_mirrorHwnd); m_mirrorHwnd = nullptr; }
     if (m_hwnd) { DestroyWindow(m_hwnd); m_hwnd = nullptr; }
 }
 
@@ -346,6 +404,11 @@ void EffectWindow::EnsureSRVLocked_(ID3D11Texture2D* currentTex)
 void EffectWindow::CreateAndShow()
 {
     winvert4::Log("EW.CreateAndShow: begin");
+#if defined(_DEBUG) && defined(WINVERT_OBS_MIRROR)
+    m_mirrorEnabled = true;
+#else
+    m_mirrorEnabled = false;
+#endif
     // 1) Create window and pipeline objects on this thread
     static ATOM s_atom = 0;
     if (!s_atom) {
@@ -357,6 +420,18 @@ void EffectWindow::CreateAndShow()
         wcex.lpszClassName = kEffectWndClass;
         s_atom = RegisterClassExW(&wcex);
     }
+#if defined(_DEBUG) && defined(WINVERT_OBS_MIRROR)
+    static ATOM s_mirrorAtom = 0;
+    if (!s_mirrorAtom) {
+        WNDCLASSEXW wcex{ sizeof(WNDCLASSEXW) };
+        wcex.style = CS_HREDRAW | CS_VREDRAW;
+        wcex.lpfnWndProc = &EffectWindow::MirrorWndProc;
+        wcex.hInstance = GetModuleHandleW(nullptr);
+        wcex.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        wcex.lpszClassName = kEffectMirrorWndClass;
+        s_mirrorAtom = RegisterClassExW(&wcex);
+    }
+#endif
 
     const int w = m_desktopRect.right - m_desktopRect.left;
     const int h = m_desktopRect.bottom - m_desktopRect.top;
@@ -407,6 +482,62 @@ void EffectWindow::CreateAndShow()
     }
     winvert4::Log("EW: swapchain created");
 
+#if defined(_DEBUG) && defined(WINVERT_OBS_MIRROR)
+    if (m_mirrorEnabled)
+    {
+        constexpr int kMirrorClientWidth = 1920;
+        constexpr int kMirrorClientHeight = 1080;
+        m_mirrorWidth = kMirrorClientWidth;
+        m_mirrorHeight = kMirrorClientHeight;
+        const DWORD mirrorStyle = WS_OVERLAPPEDWINDOW | WS_MAXIMIZEBOX | WS_THICKFRAME;
+        RECT mirrorRect{ 0, 0, kMirrorClientWidth, kMirrorClientHeight };
+        AdjustWindowRectEx(&mirrorRect, mirrorStyle, FALSE, 0);
+        const int mirrorWindowWidth = mirrorRect.right - mirrorRect.left;
+        const int mirrorWindowHeight = mirrorRect.bottom - mirrorRect.top;
+
+        m_mirrorHwnd = CreateWindowExW(
+            0,
+            kEffectMirrorWndClass,
+            L"Winvert OBS Mirror (Debug)",
+            mirrorStyle,
+            CW_USEDEFAULT, CW_USEDEFAULT, mirrorWindowWidth, mirrorWindowHeight,
+            nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+
+        if (m_mirrorHwnd)
+        {
+            DXGI_SWAP_CHAIN_DESC1 mirrorDesc = sd;
+            mirrorDesc.Width = static_cast<UINT>(kMirrorClientWidth);
+            mirrorDesc.Height = static_cast<UINT>(kMirrorClientHeight);
+            HRESULT hrMirror = m_factory->CreateSwapChainForHwnd(
+                m_d3d.Get(), m_mirrorHwnd, &mirrorDesc, nullptr, nullptr, &m_mirrorSwapChain);
+            if (FAILED(hrMirror))
+            {
+                winvert4::Logf("EW: mirror swapchain create failed hr=0x%08X", hrMirror);
+                m_mirrorSwapChain.Reset();
+                DestroyWindow(m_mirrorHwnd);
+                m_mirrorHwnd = nullptr;
+            }
+            else
+            {
+                RECT targetMonitorRect{};
+                if (TryFindNonIntersectingMonitorRect(m_desktopRect, targetMonitorRect))
+                {
+                    SetWindowPos(
+                        m_mirrorHwnd,
+                        nullptr,
+                        targetMonitorRect.left,
+                        targetMonitorRect.top,
+                        mirrorWindowWidth,
+                        mirrorWindowHeight,
+                        SWP_NOZORDER | SWP_NOACTIVATE);
+                }
+                ShowWindow(m_mirrorHwnd, SW_SHOWNORMAL);
+                winvert4::Log("EW: debug OBS mirror window shown");
+            }
+        }
+    }
+#endif
+
     // Init FPS timer (frequency for converting duplication QPC to seconds)
     QueryPerformanceFrequency(&m_qpcFreq);
 
@@ -453,8 +584,7 @@ void EffectWindow::CreateAndShow()
         m_d3d->CreateRenderTargetView(backBuf.Get(), nullptr, &m_rtv);
     }
 
-    // Exclude from capture (you mentioned you need this)
-    // This is the call that was failing. Now it's on the same thread that created the HWND.
+    // Exclude from capture.
     SetWindowDisplayAffinity(m_hwnd, WDA_EXCLUDEFROMCAPTURE);
     {
         BOOL exclude = TRUE;
@@ -823,6 +953,58 @@ void EffectWindow::Render(ID3D11Texture2D* frame, unsigned long long lastPresent
     // Present blocks to vblank when sync interval = 1 (vsynced to monitor)
     winvert4::Log("EW.Render: Present(1,0)");
     m_swapChain->Present(1, 0);
+
+#if defined(_DEBUG) && defined(WINVERT_OBS_MIRROR)
+    if (m_mirrorSwapChain && m_mirrorHwnd && IsWindowVisible(m_mirrorHwnd))
+    {
+        ComPtr<ID3D11Texture2D> mirrorBackBuf;
+        if (SUCCEEDED(m_mirrorSwapChain->GetBuffer(0, IID_PPV_ARGS(&mirrorBackBuf))) && mirrorBackBuf)
+        {
+            ComPtr<ID3D11RenderTargetView> mirrorRTV;
+            if (SUCCEEDED(m_d3d->CreateRenderTargetView(mirrorBackBuf.Get(), nullptr, &mirrorRTV)) && mirrorRTV)
+            {
+                m_immediateCtx->IASetInputLayout(m_il.Get());
+                UINT stride2 = sizeof(float) * 2;
+                UINT offset2 = 0;
+                ID3D11Buffer* vb2 = m_vb.Get();
+                m_immediateCtx->IASetVertexBuffers(0, 1, &vb2, &stride2, &offset2);
+                m_immediateCtx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+                D3D11_VIEWPORT mvp{};
+                mvp.TopLeftX = 0.0f;
+                mvp.TopLeftY = 0.0f;
+                mvp.Width = static_cast<FLOAT>(std::max(1, m_mirrorWidth));
+                mvp.Height = static_cast<FLOAT>(std::max(1, m_mirrorHeight));
+                mvp.MinDepth = 0.0f;
+                mvp.MaxDepth = 1.0f;
+                m_immediateCtx->RSSetViewports(1, &mvp);
+
+                m_immediateCtx->VSSetShader(m_vs.Get(), nullptr, 0);
+                ID3D11Buffer* vcb2 = m_cb.Get();
+                m_immediateCtx->VSSetConstantBuffers(0, 1, &vcb2);
+
+                m_immediateCtx->PSSetShader(m_ps.Get(), nullptr, 0);
+                ID3D11Buffer* pcb2 = m_pixelCb.Get();
+                m_immediateCtx->PSSetConstantBuffers(1, 1, &pcb2);
+
+                ID3D11SamplerState* ss2 = m_samp.Get();
+                m_immediateCtx->PSSetSamplers(0, 1, &ss2);
+                ID3D11ShaderResourceView* srv2 = m_srv.Get();
+                m_immediateCtx->PSSetShaderResources(0, 1, &srv2);
+
+                ID3D11RenderTargetView* mrtv = mirrorRTV.Get();
+                m_immediateCtx->OMSetRenderTargets(1, &mrtv, nullptr);
+                const float clearMirror[4] = { 0, 0, 0, 1 };
+                m_immediateCtx->ClearRenderTargetView(mirrorRTV.Get(), clearMirror);
+                m_immediateCtx->Draw(3, 0);
+
+                ID3D11ShaderResourceView* nullMirrorSRV[1] = { nullptr };
+                m_immediateCtx->PSSetShaderResources(0, 1, nullMirrorSRV);
+                m_mirrorSwapChain->Present(1, 0);
+            }
+        }
+    }
+#endif
 
     // FPS calculation based on DXGI Desktop Duplication's LastPresentTime (QPC)
     // This reflects the monitor's present cadence, independent of our swapchain/window mode.

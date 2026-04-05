@@ -152,7 +152,8 @@ namespace winrt::Winvert4::implementation
         // --- Settings ---
         int m_fpsSetting{ 0 };
         bool m_showFpsOverlay{ false };
-        bool m_openUiOnStartup{ false };
+        bool m_openUiOnStartup{ true };
+        bool m_runAtStartup{ true };
         COLORREF m_selectionColor{ RGB(255, 0, 0) };
         bool m_useCustomSelectionColor{ false };
         bool m_controlPanelShownYet{ false };

@@ -29,6 +29,7 @@ public:
 
 private:
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+    static LRESULT CALLBACK MirrorWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     void CreateAndShow();
 
     void EnsureSRVLocked_(ID3D11Texture2D* currentTex);
@@ -40,6 +41,10 @@ private:
     // Geometry/placement
     RECT m_desktopRect{};
     HWND m_hwnd{};
+    HWND m_mirrorHwnd{};
+    bool m_mirrorEnabled{ false };
+    int  m_mirrorWidth{ 0 };
+    int  m_mirrorHeight{ 0 };
 
     // Device & DXGI
     ::Microsoft::WRL::ComPtr<ID3D11Device>        m_d3d;
@@ -47,6 +52,7 @@ private:
     ::Microsoft::WRL::ComPtr<ID3D11DeviceContext> m_immediateCtx; // Shared immediate context
     ::Microsoft::WRL::ComPtr<IDXGIFactory2>       m_factory;
     ::Microsoft::WRL::ComPtr<IDXGISwapChain1>     m_swapChain;
+    ::Microsoft::WRL::ComPtr<IDXGISwapChain1>     m_mirrorSwapChain;
 
     // Pipeline
     ::Microsoft::WRL::ComPtr<ID3D11RenderTargetView> m_rtv;

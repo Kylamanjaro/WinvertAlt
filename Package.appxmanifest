@@ -11,13 +11,13 @@
   <Identity
     Name="Vibe.Winvert"
     Publisher="CN=kbuch"
-    Version="1.0.6.0" />
+    Version="1.0.7.0" />
 
   <mp:PhoneIdentity PhoneProductId="618e947e-58f6-4a0d-8918-66be32b6f66c" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
     <DisplayName>Winvert</DisplayName>
-    <PublisherDisplayName>Vibe</PublisherDisplayName>
+    <PublisherDisplayName>CodeMaxx</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
 
