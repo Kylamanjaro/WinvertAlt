@@ -158,7 +158,7 @@ namespace winrt::Winvert4::implementation
         bool m_useCustomSelectionColor{ false };
         bool m_controlPanelShownYet{ false };
         int  m_brightnessDelayFrames{ 0 }; // default 0 frames
-        bool m_colorMapPreserveToggleState{ true }; // persisted UI state for settings toggle
+        bool m_colorMapPreserveToggleState{ false }; // persisted UI state for settings toggle
 
         // --- Hotkeys ---
         enum class RebindingState { None, Invert, Filter, Remove };
@@ -230,6 +230,7 @@ namespace winrt::Winvert4::implementation
         int SelectedTabIndex();
         HWND SelectedWindowHwnd();
         winrt::Windows::Foundation::IAsyncAction InitStartupToggleAsync();
+        winrt::Windows::Foundation::IAsyncAction PromptEnableStartupOnFirstRunAsync();
         void RemoveRegionAt(int idx);
         void RenumberRegionTabHeaders();
         void ApplySettingsPageStateFromModel();

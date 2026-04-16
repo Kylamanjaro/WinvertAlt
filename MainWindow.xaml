@@ -236,7 +236,7 @@
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="Show FPS overlay" Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold"/>
-                                        <ToggleSwitch Grid.Column="1" x:Name="ShowFpsToggle" HorizontalAlignment="Right" OnContent="On" OffContent="Off" IsOn="True" Toggled="ShowFpsToggle_Toggled"/>
+                                        <ToggleSwitch Grid.Column="1" x:Name="ShowFpsToggle" HorizontalAlignment="Right" OnContent="On" OffContent="Off" IsOn="False" Toggled="ShowFpsToggle_Toggled"/>
                                     </Grid>
                                 </StackPanel>
                             </Expander>
@@ -396,7 +396,7 @@
                                     <StackPanel Grid.Column="1" Grid.Row="1" Grid.RowSpan="3" Padding="0,32,0,0" Spacing="8">
                                         <TextBlock Grid.Column="1" Grid.Row="1" Text="Color picker" HorizontalAlignment="Center"/>
                                         <ColorPicker x:Name="ColorMapPicker" ColorSpectrumShape="Ring" IsAlphaEnabled="False" ColorChanged="ColorMapPicker_ColorChanged"/>
-                                        <ToggleSwitch x:Name="ColorMapPreserveToggle" Header="Preserve brightness" IsOn="True" Toggled="ColorMapPreserveToggle_Toggled"/>
+                                        <ToggleSwitch x:Name="ColorMapPreserveToggle" Header="Preserve brightness" IsOn="False" Toggled="ColorMapPreserveToggle_Toggled"/>
                                     </StackPanel>
 
 

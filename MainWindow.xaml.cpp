@@ -186,6 +186,19 @@ namespace winrt::Winvert4::implementation
         // Defer OutputManager thread/device creation until first region is created.
         // Lightweight enumeration will happen on-demand when computing monitor splits.
 
+        bool isFirstRun = false;
+        try
+        {
+            auto folder = winrt::Windows::Storage::ApplicationData::Current().LocalFolder();
+            std::wstring jsonPath = std::wstring(folder.Path().c_str()) + L"\\settings.json";
+            DWORD attrs = GetFileAttributesW(jsonPath.c_str());
+            isFirstRun = (attrs == INVALID_FILE_ATTRIBUTES) || ((attrs & FILE_ATTRIBUTE_DIRECTORY) != 0);
+        }
+        catch (...)
+        {
+            isFirstRun = false;
+        }
+
         // TODO: Load settings from a file
         EnumerateMonitors();
 
@@ -211,6 +224,10 @@ namespace winrt::Winvert4::implementation
         // Initialize run-at-startup toggle state
         {
             auto __ = InitStartupToggleAsync();
+        }
+        if (isFirstRun)
+        {
+            auto __ = PromptEnableStartupOnFirstRunAsync();
         }
 
         // Populate default filter presets if none exist yet
@@ -4170,6 +4187,87 @@ void winrt::Winvert4::implementation::MainWindow::PreviewColorMapToggle_Unchecke
         catch (...)
         {
             winvert4::Log("StartupTask init failed: unknown exception");
+        }
+        co_return;
+    }
+
+    winrt::Windows::Foundation::IAsyncAction winrt::Winvert4::implementation::MainWindow::PromptEnableStartupOnFirstRunAsync()
+    {
+        using winrt::Windows::ApplicationModel::StartupTask;
+        using winrt::Windows::ApplicationModel::StartupTaskState;
+        using winrt::Windows::Storage::ApplicationData;
+
+        try
+        {
+            // Skip prompt in automated runs.
+            std::wstring dummy;
+            if (GetEnvW(L"WINVERT_TEST_OPEN_SETTINGS", dummy) || GetEnvW(L"WINVERT_SELFTEST_DIR", dummy))
+            {
+                co_return;
+            }
+
+            auto localSettings = ApplicationData::Current().LocalSettings();
+            auto values = localSettings.Values();
+            auto existing = values.TryLookup(L"startupPromptShown");
+            if (existing && existing.try_as<winrt::Windows::Foundation::IReference<bool>>())
+            {
+                auto ref = existing.as<winrt::Windows::Foundation::IReference<bool>>();
+                if (ref.Value())
+                {
+                    co_return;
+                }
+            }
+
+            auto task = co_await StartupTask::GetAsync(L"Winvert4Startup");
+            auto state = task.State();
+            if (state == StartupTaskState::Enabled || state == StartupTaskState::EnabledByPolicy)
+            {
+                values.Insert(L"startupPromptShown", box_value(true));
+                co_return;
+            }
+
+            int answer = MessageBoxW(
+                m_mainHwnd,
+                L"Enable Winvert to run at startup?\n\nYou can change this later in Settings.",
+                L"Winvert Startup",
+                MB_ICONQUESTION | MB_YESNO | MB_SYSTEMMODAL);
+
+            values.Insert(L"startupPromptShown", box_value(true));
+
+            if (answer == IDYES)
+            {
+                auto res = co_await task.RequestEnableAsync();
+                bool isOn = (res == StartupTaskState::Enabled || res == StartupTaskState::EnabledByPolicy);
+                m_runAtStartup = isOn;
+                DispatcherQueue().TryEnqueue([this, isOn]()
+                {
+                    m_isInitializingStartupToggle = true;
+                    if (auto t = RunAtStartupToggle()) t.IsOn(isOn);
+                    m_isInitializingStartupToggle = false;
+                });
+                winvert4::Logf("StartupTask first-run prompt: result=%s isOn=%d",
+                    StartupTaskStateToString(res), isOn ? 1 : 0);
+            }
+            else
+            {
+                m_runAtStartup = false;
+                DispatcherQueue().TryEnqueue([this]()
+                {
+                    m_isInitializingStartupToggle = true;
+                    if (auto t = RunAtStartupToggle()) t.IsOn(false);
+                    m_isInitializingStartupToggle = false;
+                });
+                winvert4::Log("StartupTask first-run prompt: user declined");
+            }
+        }
+        catch (winrt::hresult_error const& ex)
+        {
+            winvert4::Logf("StartupTask first-run prompt failed: hr=0x%08X",
+                static_cast<unsigned int>(ex.code().value));
+        }
+        catch (...)
+        {
+            winvert4::Log("StartupTask first-run prompt failed: unknown exception");
         }
         co_return;
     }
