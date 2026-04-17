@@ -285,9 +285,9 @@
                                     <TextBlock Text="Custom filters" FontWeight="SemiBold"/>
                                 </Expander.Header>
                                 <StackPanel Spacing="8">
-                                    <!-- Favorite effect selection for Win+Shift+F -->
+                                    <!-- Favorite effect selection for Ctrl+Alt+F -->
                                     <StackPanel Spacing="4">
-                                        <TextBlock Text="Favorite effect (Win+Shift+F)"/>
+                                        <TextBlock Text="Favorite effect (Ctrl+Alt+F)"/>
                                         <ComboBox x:Name="FavoriteFilterComboBox" SelectionChanged="FavoriteFilterComboBox_SelectionChanged"/>
                                     </StackPanel>
 

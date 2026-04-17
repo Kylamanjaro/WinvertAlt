@@ -13,9 +13,9 @@
 
 ## Global Hotkeys
 - Three global hotkeys:
-- Invert/Add (default `Win+Shift+I`)
-- Filter/Add (default `Win+Shift+F`)
-- Remove Last (default `Win+Shift+R`)
+- Invert/Add (default `Ctrl+Alt+I`)
+- Filter/Add (default `Ctrl+Alt+F`)
+- Remove Last (default `Ctrl+Alt+R`)
 - Rebind each hotkey from settings.
 - Hotkeys remain active while control panel is hidden.
 

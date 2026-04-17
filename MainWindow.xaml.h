@@ -163,11 +163,11 @@ namespace winrt::Winvert4::implementation
         // --- Hotkeys ---
         enum class RebindingState { None, Invert, Filter, Remove };
         RebindingState m_rebindingState{ RebindingState::None };
-        UINT m_hotkeyInvertMod{ MOD_WIN | MOD_SHIFT };
+        UINT m_hotkeyInvertMod{ MOD_CONTROL | MOD_ALT };
         UINT m_hotkeyInvertVk{ 'I' };
-        UINT m_hotkeyFilterMod{ MOD_WIN | MOD_SHIFT };
+        UINT m_hotkeyFilterMod{ MOD_CONTROL | MOD_ALT };
         UINT m_hotkeyFilterVk{ 'F' };
-        UINT m_hotkeyRemoveMod{ MOD_WIN | MOD_SHIFT };
+        UINT m_hotkeyRemoveMod{ MOD_CONTROL | MOD_ALT };
         UINT m_hotkeyRemoveVk{ 'R' };
 
         enum class PendingEffect { None, Invert, Filter };
