@@ -98,7 +98,7 @@
     <AppxBundlePlatforms>x64</AppxBundlePlatforms>
     <GenerateTemporaryStoreCertificate>True</GenerateTemporaryStoreCertificate>
     <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
-    <PackageCertificateThumbprint>DD6CCA97C36785F1451598529EDBD9393ADD97B4</PackageCertificateThumbprint>
+    <PackageCertificateThumbprint>0B4E67980A8FBA2D0106CF1EC1B3D261DAB3668D</PackageCertificateThumbprint>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>

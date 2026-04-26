@@ -361,11 +361,13 @@
     <Language Code="zu-za" InMinimumRequirementSet="true" />
   </SupportedLocales>
   <ProductReservedInfo>
-    <MainPackageIdentityName>Vibe.Winvert</MainPackageIdentityName>
+    <MainPackageIdentityName>Vibe.54945B4883422</MainPackageIdentityName>
     <ReservedNames>
       <ReservedName>Winvert</ReservedName>
     </ReservedNames>
   </ProductReservedInfo>
-  <AccountPackageIdentityNames />
-  <PackageInfoList LandingUrl="https://devcenterapi.dce.mp.microsoft.com/dashboard/Application?appId=9P9G3W1WV99F" />
+  <AccountPackageIdentityNames>
+    <MainPackageIdentityName>Vibe.27948CC391C81</MainPackageIdentityName>
+  </AccountPackageIdentityNames>
+  <PackageInfoList LandingUrl="https://devcenterapi.dce.mp.microsoft.com/dashboard/Application?appId=9MZ7G8KXVVWW" />
 </StoreAssociation>

@@ -81,10 +81,19 @@ void OutputManager::EnsureThreadsCreated_()
             DXGI_OUTPUT_DESC outputDesc{};
             if (FAILED(output1->GetDesc(&outputDesc))) continue;
             std::wstring deviceName = outputDesc.DeviceName;
+            bool isPrimaryCoords = (outputDesc.DesktopCoordinates.left == 0 && outputDesc.DesktopCoordinates.top == 0);
+            bool enableMirror = (_wcsicmp(deviceName.c_str(), L"\\\\.\\DISPLAY1") == 0) || isPrimaryCoords;
             if (m_duplicationThreads.find(deviceName) == m_duplicationThreads.end())
             {
-                winvert4::Logf("OM: creating thread for output %ls", deviceName.c_str());
-                auto thread = std::make_unique<DuplicationThread>(adapter.Get(), output1.Get());
+                winvert4::Logf("OM: creating thread for output %ls rect=(%ld,%ld,%ld,%ld) primaryCoords=%d mirror=%d",
+                    deviceName.c_str(),
+                    outputDesc.DesktopCoordinates.left,
+                    outputDesc.DesktopCoordinates.top,
+                    outputDesc.DesktopCoordinates.right,
+                    outputDesc.DesktopCoordinates.bottom,
+                    isPrimaryCoords ? 1 : 0,
+                    enableMirror ? 1 : 0);
+                auto thread = std::make_unique<DuplicationThread>(adapter.Get(), output1.Get(), enableMirror);
                 thread->Run();
                 m_duplicationThreads[deviceName] = std::move(thread);
             }

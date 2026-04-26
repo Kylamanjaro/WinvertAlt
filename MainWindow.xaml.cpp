@@ -52,6 +52,8 @@ namespace
     constexpr int HOTKEY_INVERT_ID = 1;
     constexpr int HOTKEY_FILTER_ID = 2;
     constexpr int HOTKEY_REMOVE_ID = 3;
+    constexpr UINT_PTR REBIND_TIMEOUT_TIMER_ID = 0xBEEF;
+    constexpr UINT REBIND_TIMEOUT_MS = 10000;
     constexpr UINT kTrayIconId = 1;
     constexpr UINT kTrayIconMessage = WM_APP + 42;
     constexpr UINT kTrayCommandOpen = 10001;
@@ -75,6 +77,36 @@ namespace
 
     // Default luminance weights (BT.709 for sRGB)
     constexpr float kDefaultLumaWeights[3] = { 0.2126f, 0.7152f, 0.0722f };
+
+    static std::wstring HotkeyToText(UINT mod, UINT vk)
+    {
+        std::wstring s;
+        if (mod & MOD_WIN) s += L"Win + ";
+        if (mod & MOD_CONTROL) s += L"Ctrl + ";
+        if (mod & MOD_ALT) s += L"Alt + ";
+        if (mod & MOD_SHIFT) s += L"Shift + ";
+        if (!s.empty() && s.size() >= 3) s.resize(s.size() - 3); // trim trailing " + "
+
+        wchar_t keyName[64] = {};
+        UINT scanCode = MapVirtualKey(vk, MAPVK_VK_TO_VSC);
+        LONG lParam = static_cast<LONG>(scanCode << 16);
+        if (GetKeyNameTextW(lParam, keyName, _countof(keyName)) > 0)
+        {
+            if (!s.empty()) s += L" + ";
+            s += keyName;
+        }
+        return s;
+    }
+
+    static const wchar_t* HotkeyErrorReason(DWORD err)
+    {
+        // Use numeric values for portability across SDK header versions.
+        constexpr DWORD kErrHotkeyAlreadyRegistered = 1409; // ERROR_HOTKEY_ALREADY_REGISTERED
+        constexpr DWORD kErrInvalidHotkey = 1422;           // ERROR_INVALID_HOTKEY
+        if (err == kErrHotkeyAlreadyRegistered) return L"This hotkey is already used by another app.";
+        if (err == kErrInvalidHotkey) return L"This hotkey combination is invalid on Windows.";
+        return L"Windows rejected this hotkey.";
+    }
 }
 
 std::vector<RECT> winrt::Winvert4::implementation::MainWindow::s_monitorRects;
@@ -82,6 +114,7 @@ std::vector<RECT> winrt::Winvert4::implementation::MainWindow::s_monitorRects;
 HHOOK winrt::Winvert4::implementation::MainWindow::s_mouseHook = nullptr;
 HHOOK winrt::Winvert4::implementation::MainWindow::s_keyboardHook = nullptr;
 winrt::Winvert4::implementation::MainWindow* winrt::Winvert4::implementation::MainWindow::s_samplingInstance = nullptr;
+winrt::Winvert4::implementation::MainWindow* winrt::Winvert4::implementation::MainWindow::s_rebindingInstance = nullptr;
 
 LRESULT CALLBACK winrt::Winvert4::implementation::MainWindow::LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam)
 {
@@ -130,22 +163,52 @@ LRESULT CALLBACK winrt::Winvert4::implementation::MainWindow::LowLevelKeyboardPr
     if (nCode >= 0 && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN))
     {
         auto p = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
-        auto self = MainWindow::s_samplingInstance;
-        if (p->vkCode == VK_ESCAPE)
+        auto sampleSelf = MainWindow::s_samplingInstance;
+        if (sampleSelf && p->vkCode == VK_ESCAPE)
         {
-            if (self && self->m_isSamplingColor)
-            {
-                auto dq = self->DispatcherQueue();
-                dq.TryEnqueue([self]() {
-                    self->CancelColorSample();
-                });
-            }
-            if (MainWindow::s_keyboardHook)
-            {
-                UnhookWindowsHookEx(MainWindow::s_keyboardHook);
-                MainWindow::s_keyboardHook = nullptr;
-            }
+            auto dq = sampleSelf->DispatcherQueue();
+            dq.TryEnqueue([sampleSelf]() {
+                sampleSelf->CancelColorSample();
+            });
             return 1; // swallow ESC
+        }
+
+        auto rebindSelf = MainWindow::s_rebindingInstance;
+        if (rebindSelf && rebindSelf->m_rebindingState != RebindingState::None)
+        {
+            if (p->vkCode == VK_ESCAPE)
+            {
+                auto dq = rebindSelf->DispatcherQueue();
+                dq.TryEnqueue([rebindSelf]() {
+                    rebindSelf->EndRebindCapture(true, L"Rebind cancelled.");
+                });
+                return 1;
+            }
+
+            UINT newMod = 0;
+            if (GetAsyncKeyState(VK_SHIFT) & 0x8000) newMod |= MOD_SHIFT;
+            if (GetAsyncKeyState(VK_CONTROL) & 0x8000) newMod |= MOD_CONTROL;
+            if (GetAsyncKeyState(VK_MENU) & 0x8000) newMod |= MOD_ALT;
+            if ((GetAsyncKeyState(VK_LWIN) & 0x8000) || (GetAsyncKeyState(VK_RWIN) & 0x8000)) newMod |= MOD_WIN;
+
+            winvert4::Logf("Rebind(hook): vk=%u modifiers=%u", (unsigned)p->vkCode, (unsigned)newMod);
+
+            if (p->vkCode == VK_SHIFT || p->vkCode == VK_CONTROL || p->vkCode == VK_MENU || p->vkCode == VK_LWIN || p->vkCode == VK_RWIN)
+            {
+                return 1; // keep waiting for non-modifier key
+            }
+
+            if (newMod == 0)
+            {
+                return 1; // require at least one modifier
+            }
+
+            const UINT vk = static_cast<UINT>(p->vkCode);
+            auto dq = rebindSelf->DispatcherQueue();
+            dq.TryEnqueue([rebindSelf, vk, newMod]() {
+                rebindSelf->ApplyRebindCombination(vk, newMod);
+            });
+            return 1; // consume so it doesn't leak to focused app
         }
     }
     return CallNextHookEx(MainWindow::s_keyboardHook, nCode, wParam, lParam);
@@ -183,8 +246,9 @@ namespace winrt::Winvert4::implementation
         winvert4::Logf("MainWindow: got HWND=%p", (void*)m_mainHwnd);
 
         m_outputManager = std::make_unique<OutputManager>();
-        // Defer OutputManager thread/device creation until first region is created.
-        // Lightweight enumeration will happen on-demand when computing monitor splits.
+        m_outputManager->Initialize();
+        // Create duplication threads immediately so debug mirror windows can be spawned at startup
+        m_outputManager->PrewarmForSelection();
 
         bool isFirstRun = false;
         try
@@ -517,11 +581,7 @@ namespace winrt::Winvert4::implementation
     void winrt::Winvert4::implementation::MainWindow::BackButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
         if (m_rebindingState != RebindingState::None) {
-            m_rebindingState = RebindingState::None;
-            RebindStatusText().Text(L"");
-            RebindInvertHotkeyButton().IsEnabled(true);
-            RebindFilterHotkeyButton().IsEnabled(true);
-            RebindRemoveHotkeyButton().IsEnabled(true);
+            EndRebindCapture(true, L"Rebind cancelled.");
         }
 
         auto windowId = winrt::Microsoft::UI::GetWindowIdFromWindow(m_mainHwnd);
@@ -1195,32 +1255,128 @@ namespace winrt::Winvert4::implementation
 
     void winrt::Winvert4::implementation::MainWindow::RebindInvertHotkeyButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
-        m_rebindingState = RebindingState::Invert;
-        RebindStatusText().Text(L"Press key combo for Invert/Add. ESC to cancel.");
-        RebindInvertHotkeyButton().IsEnabled(false);
-        RebindFilterHotkeyButton().IsEnabled(true);
-        RebindRemoveHotkeyButton().IsEnabled(true);
-        SetFocus(m_mainHwnd);
+        BeginRebindCapture(RebindingState::Invert, L"Press key combo for Invert/Add. ESC to cancel.");
     }
 
     void winrt::Winvert4::implementation::MainWindow::RebindFilterHotkeyButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
-        m_rebindingState = RebindingState::Filter;
-        RebindStatusText().Text(L"Press key combo for Filter/Add. ESC to cancel.");
-        RebindInvertHotkeyButton().IsEnabled(true);
-        RebindFilterHotkeyButton().IsEnabled(false);
-        RebindRemoveHotkeyButton().IsEnabled(true);
-        SetFocus(m_mainHwnd);
+        BeginRebindCapture(RebindingState::Filter, L"Press key combo for Filter/Add. ESC to cancel.");
     }
 
     void winrt::Winvert4::implementation::MainWindow::RebindRemoveHotkeyButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
-        m_rebindingState = RebindingState::Remove;
-        RebindStatusText().Text(L"Press key combo for Remove Last. ESC to cancel.");
-        RebindInvertHotkeyButton().IsEnabled(true);
-        RebindFilterHotkeyButton().IsEnabled(true);
-        RebindRemoveHotkeyButton().IsEnabled(false);
+        BeginRebindCapture(RebindingState::Remove, L"Press key combo for Remove Last. ESC to cancel.");
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::BeginRebindCapture(RebindingState target, wchar_t const* promptText)
+    {
+        if (target == RebindingState::None) return;
+        winvert4::Logf("Rebind: start target=%d", static_cast<int>(target));
+
+        UnregisterHotKey(m_mainHwnd, HOTKEY_INVERT_ID);
+        UnregisterHotKey(m_mainHwnd, HOTKEY_FILTER_ID);
+        UnregisterHotKey(m_mainHwnd, HOTKEY_REMOVE_ID);
+
+        m_rebindingState = target;
+        if (auto status = RebindStatusText()) status.Text(promptText ? promptText : L"Press key combo. ESC to cancel.");
+        if (auto b = RebindInvertHotkeyButton()) b.IsEnabled(target != RebindingState::Invert);
+        if (auto b = RebindFilterHotkeyButton()) b.IsEnabled(target != RebindingState::Filter);
+        if (auto b = RebindRemoveHotkeyButton()) b.IsEnabled(target != RebindingState::Remove);
+
+        SetForegroundWindow(m_mainHwnd);
+        SetActiveWindow(m_mainHwnd);
         SetFocus(m_mainHwnd);
+
+        s_rebindingInstance = this;
+        if (!s_keyboardHook)
+        {
+            s_keyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, &MainWindow::LowLevelKeyboardProc, GetModuleHandleW(nullptr), 0);
+            winvert4::Logf("Rebind: installed keyboard hook=%p", (void*)s_keyboardHook);
+        }
+        SetTimer(m_mainHwnd, REBIND_TIMEOUT_TIMER_ID, REBIND_TIMEOUT_MS, nullptr);
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::EndRebindCapture(bool cancelled, wchar_t const* statusText)
+    {
+        KillTimer(m_mainHwnd, REBIND_TIMEOUT_TIMER_ID);
+
+        m_rebindingState = RebindingState::None;
+        if (auto status = RebindStatusText()) status.Text(statusText ? statusText : (cancelled ? L"Rebind cancelled." : L"Hotkey updated!"));
+        if (auto b = RebindInvertHotkeyButton()) b.IsEnabled(true);
+        if (auto b = RebindFilterHotkeyButton()) b.IsEnabled(true);
+        if (auto b = RebindRemoveHotkeyButton()) b.IsEnabled(true);
+
+        RegisterAllHotkeys();
+
+        s_rebindingInstance = nullptr;
+        if (!m_isSamplingColor && s_keyboardHook)
+        {
+            UnhookWindowsHookEx(s_keyboardHook);
+            s_keyboardHook = nullptr;
+            winvert4::Log("Rebind: keyboard hook removed");
+        }
+    }
+
+    void winrt::Winvert4::implementation::MainWindow::ApplyRebindCombination(UINT vk, UINT newMod)
+    {
+        if (m_rebindingState == RebindingState::None) return;
+        if (newMod == 0) return;
+
+        const RebindingState target = m_rebindingState;
+        const bool conflictsInvert =
+            (target != RebindingState::Invert) &&
+            (newMod == m_hotkeyInvertMod) &&
+            (vk == m_hotkeyInvertVk);
+        const bool conflictsFilter =
+            (target != RebindingState::Filter) &&
+            (newMod == m_hotkeyFilterMod) &&
+            (vk == m_hotkeyFilterVk);
+        const bool conflictsRemove =
+            (target != RebindingState::Remove) &&
+            (newMod == m_hotkeyRemoveMod) &&
+            (vk == m_hotkeyRemoveVk);
+        if (conflictsInvert || conflictsFilter || conflictsRemove)
+        {
+            EndRebindCapture(true, L"Hotkey already used by another Winvert action.");
+            MessageBoxW(
+                m_mainHwnd,
+                L"This hotkey is already assigned to another Winvert action.\nPlease choose a different combination.",
+                L"Winvert Hotkey Error",
+                MB_OK | MB_ICONWARNING);
+            winvert4::Log("Rebind: duplicate combo blocked");
+            return;
+        }
+
+        const UINT oldInvertMod = m_hotkeyInvertMod;
+        const UINT oldInvertVk  = m_hotkeyInvertVk;
+        const UINT oldFilterMod = m_hotkeyFilterMod;
+        const UINT oldFilterVk  = m_hotkeyFilterVk;
+        const UINT oldRemoveMod = m_hotkeyRemoveMod;
+        const UINT oldRemoveVk  = m_hotkeyRemoveVk;
+
+        switch (target) {
+        case RebindingState::Invert: m_hotkeyInvertMod = newMod; m_hotkeyInvertVk = vk; break;
+        case RebindingState::Filter: m_hotkeyFilterMod = newMod; m_hotkeyFilterVk = vk; break;
+        case RebindingState::Remove: m_hotkeyRemoveMod = newMod; m_hotkeyRemoveVk = vk; break;
+        default: break;
+        }
+
+        std::wstring regError;
+        if (RegisterAllHotkeys(&regError))
+        {
+            EndRebindCapture(false, L"Hotkey updated!");
+            SaveAppState();
+            winvert4::Log("Rebind: registration succeeded");
+        }
+        else
+        {
+            m_hotkeyInvertMod = oldInvertMod; m_hotkeyInvertVk = oldInvertVk;
+            m_hotkeyFilterMod = oldFilterMod; m_hotkeyFilterVk = oldFilterVk;
+            m_hotkeyRemoveMod = oldRemoveMod; m_hotkeyRemoveVk = oldRemoveVk;
+            EndRebindCapture(true, L"Hotkey update failed.");
+            MessageBoxW(m_mainHwnd, regError.c_str(), L"Winvert Hotkey Error", MB_OK | MB_ICONWARNING);
+            winvert4::Logf("Rebind: registration failed: %s", winrt::to_string(winrt::hstring(regError)).c_str());
+        }
     }
 
     void winrt::Winvert4::implementation::MainWindow::SelectionColorPicker_ColorChanged(ColorPicker const&, ColorChangedEventArgs const& args)
@@ -1508,8 +1664,10 @@ namespace
 }
 
     // --- Core Logic ---
-    void winrt::Winvert4::implementation::MainWindow::RegisterAllHotkeys()
+    bool winrt::Winvert4::implementation::MainWindow::RegisterAllHotkeys(std::wstring* outError)
     {
+        if (outError) outError->clear();
+
         UnregisterHotKey(m_mainHwnd, HOTKEY_INVERT_ID);
         UnregisterHotKey(m_mainHwnd, HOTKEY_FILTER_ID);
         UnregisterHotKey(m_mainHwnd, HOTKEY_REMOVE_ID);
@@ -1533,8 +1691,38 @@ namespace
             {
                 status.Text(L"One or more hotkeys failed to register. Check log for details.");
             }
+            if (outError)
+            {
+                std::wstring msg = L"One or more hotkeys could not be registered:\n";
+                if (!okInvert)
+                {
+                    msg += L"\nInvert/Add (" + HotkeyToText(m_hotkeyInvertMod, m_hotkeyInvertVk) + L"): ";
+                    msg += HotkeyErrorReason(errInvert);
+                    msg += L" (error ";
+                    msg += std::to_wstring(static_cast<unsigned long>(errInvert));
+                    msg += L")";
+                }
+                if (!okFilter)
+                {
+                    msg += L"\nFilter/Add (" + HotkeyToText(m_hotkeyFilterMod, m_hotkeyFilterVk) + L"): ";
+                    msg += HotkeyErrorReason(errFilter);
+                    msg += L" (error ";
+                    msg += std::to_wstring(static_cast<unsigned long>(errFilter));
+                    msg += L")";
+                }
+                if (!okRemove)
+                {
+                    msg += L"\nRemove Last (" + HotkeyToText(m_hotkeyRemoveMod, m_hotkeyRemoveVk) + L"): ";
+                    msg += HotkeyErrorReason(errRemove);
+                    msg += L" (error ";
+                    msg += std::to_wstring(static_cast<unsigned long>(errRemove));
+                    msg += L")";
+                }
+                *outError = std::move(msg);
+            }
         }
         UpdateAllHotkeyText();
+        return (okInvert && okFilter && okRemove);
     }
 
     void winrt::Winvert4::implementation::MainWindow::InitializeTrayIcon()
@@ -1797,6 +1985,12 @@ namespace
     {
         s_monitorRects.clear();
         EnumDisplayMonitors(NULL, NULL, MonitorEnumProc, 0);
+        // Sort so that primary monitor (left==0 && top==0) is first
+        std::sort(s_monitorRects.begin(), s_monitorRects.end(), [](const RECT& a, const RECT& b) {
+            if (a.left == 0 && a.top == 0) return true;  // a is primary, comes first
+            if (b.left == 0 && b.top == 0) return false; // b is primary, a comes after
+            return a.left < b.left || (a.left == b.left && a.top < b.top); // otherwise sort by position
+        });
     }
 
     BOOL CALLBACK MainWindow::MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData)
@@ -2095,7 +2289,16 @@ namespace
             const int bufW = self->m_screenSize.cx;
             const int bufH = self->m_screenSize.cy;
             HDC memDC = CreateCompatibleDC(hdc);
+            if (!memDC) {
+                EndPaint(hwnd, &ps);
+                break;
+            }
             HBITMAP memBmp = CreateCompatibleBitmap(hdc, bufW, bufH);
+            if (!memBmp) {
+                DeleteDC(memDC);
+                EndPaint(hwnd, &ps);
+                break;
+            }
             HGDIOBJ oldBmp = SelectObject(memDC, memBmp);
 
             Gdiplus::Graphics graphics(memDC);
@@ -2409,8 +2612,11 @@ namespace
         // Install a low-level mouse hook to capture the next click and swallow it
         s_samplingInstance = this;
         s_mouseHook = SetWindowsHookExW(WH_MOUSE_LL, &MainWindow::LowLevelMouseProc, GetModuleHandleW(nullptr), 0);
-        // Install a low-level keyboard hook to allow ESC cancellation
-        s_keyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, &MainWindow::LowLevelKeyboardProc, GetModuleHandleW(nullptr), 0);
+        // Install a low-level keyboard hook (shared with rebind capture) to allow ESC cancellation
+        if (!s_keyboardHook)
+        {
+            s_keyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, &MainWindow::LowLevelKeyboardProc, GetModuleHandleW(nullptr), 0);
+        }
         // Show overlay following the cursor
         ShowSampleOverlay();
         POINT pt{}; GetCursorPos(&pt); MoveSampleOverlay(pt);
@@ -2426,7 +2632,7 @@ namespace
             UnhookWindowsHookEx(MainWindow::s_mouseHook);
             MainWindow::s_mouseHook = nullptr;
         }
-        if (MainWindow::s_keyboardHook)
+        if (MainWindow::s_keyboardHook && MainWindow::s_rebindingInstance == nullptr)
         {
             UnhookWindowsHookEx(MainWindow::s_keyboardHook);
             MainWindow::s_keyboardHook = nullptr;
@@ -2734,42 +2940,21 @@ namespace
         }
 
         if (pThis->m_rebindingState != RebindingState::None) {
+            // Fallback capture path if low-level hook is unavailable.
             if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) {
                 if (wParam == VK_ESCAPE) {
-                    pThis->m_rebindingState = RebindingState::None;
-                    pThis->RebindStatusText().Text(L"Rebind cancelled.");
-                    pThis->RebindInvertHotkeyButton().IsEnabled(true);
-                    pThis->RebindFilterHotkeyButton().IsEnabled(true);
-                    pThis->RebindRemoveHotkeyButton().IsEnabled(true);
+                    pThis->EndRebindCapture(true, L"Rebind cancelled.");
                     return 0;
                 }
-
                 UINT newMod = 0;
                 if (GetKeyState(VK_SHIFT) & 0x8000) newMod |= MOD_SHIFT;
                 if (GetKeyState(VK_CONTROL) & 0x8000) newMod |= MOD_CONTROL;
                 if (GetKeyState(VK_MENU) & 0x8000) newMod |= MOD_ALT;
                 if ((GetKeyState(VK_LWIN) & 0x8000) || (GetKeyState(VK_RWIN) & 0x8000)) newMod |= MOD_WIN;
-
-                if (newMod == 0) {
-                    return DefSubclassProc(hWnd, uMsg, wParam, lParam);
-                }
-
-                if (wParam != VK_SHIFT && wParam != VK_CONTROL && wParam != VK_MENU && wParam != VK_LWIN && wParam != VK_RWIN) {
-                    switch (pThis->m_rebindingState) {
-                    case RebindingState::Invert:    pThis->m_hotkeyInvertMod = newMod; pThis->m_hotkeyInvertVk = static_cast<UINT>(wParam); break;
-                    case RebindingState::Filter:    pThis->m_hotkeyFilterMod = newMod; pThis->m_hotkeyFilterVk = static_cast<UINT>(wParam); break;
-                    case RebindingState::Remove:    pThis->m_hotkeyRemoveMod = newMod; pThis->m_hotkeyRemoveVk = static_cast<UINT>(wParam); break;
-                    }
-                    pThis->m_rebindingState = RebindingState::None;
-                    pThis->RegisterAllHotkeys();
-                    pThis->RebindStatusText().Text(L"Hotkey updated!");
-                    pThis->RebindInvertHotkeyButton().IsEnabled(true);
-                    pThis->RebindFilterHotkeyButton().IsEnabled(true);
-                    pThis->RebindRemoveHotkeyButton().IsEnabled(true);
-                    pThis->SaveAppState();
+                if (newMod != 0 && wParam != VK_SHIFT && wParam != VK_CONTROL && wParam != VK_MENU && wParam != VK_LWIN && wParam != VK_RWIN) {
+                    pThis->ApplyRebindCombination(static_cast<UINT>(wParam), newMod);
                     return 0;
                 }
-                return DefSubclassProc(hWnd, uMsg, wParam, lParam);
             }
         }
 
@@ -2792,6 +2977,13 @@ namespace
             }
         case WM_HOTKEY:
             {
+                if (pThis->m_rebindingState != RebindingState::None)
+                {
+                    // Ignore effect hotkeys while rebinding to prevent actions
+                    // from firing during key-capture.
+                    winvert4::Logf("Rebind: ignored WM_HOTKEY id=%u while rebinding", (unsigned)wParam);
+                    return 0;
+                }
                 // Defer action to the dispatcher to avoid mutating XAML/TabView
                 // state directly inside the Win32 window-proc stack.
                 auto dq = pThis->DispatcherQueue();
@@ -2806,6 +2998,19 @@ namespace
                 }
                 return 0;
             }
+        case WM_TIMER:
+            if (wParam == REBIND_TIMEOUT_TIMER_ID && pThis->m_rebindingState != RebindingState::None)
+            {
+                winvert4::Log("Rebind: timeout waiting for key combo");
+                pThis->EndRebindCapture(true, L"Rebind timed out. Try again.");
+                MessageBoxW(
+                    pThis->m_mainHwnd,
+                    L"Rebind timed out waiting for a valid key combo.\nTry again and press a non-modifier key while holding modifiers.",
+                    L"Winvert Hotkey",
+                    MB_OK | MB_ICONINFORMATION);
+                return 0;
+            }
+            break;
         case WM_CLOSE:
             // Keep Winvert resident in the background; closing the control panel
             // should not terminate hotkeys/startup behavior.

@@ -5,7 +5,7 @@
 class DuplicationThread
 {
 public:
-    DuplicationThread(IDXGIAdapter1* adapter, IDXGIOutput1* output);
+    DuplicationThread(IDXGIAdapter1* adapter, IDXGIOutput1* output, bool enableMirror);
     ~DuplicationThread();
 
     void Run();
@@ -38,4 +38,11 @@ private:
     ::Microsoft::WRL::ComPtr<ID3D11Texture2D> m_fullTexture;
     // Countdown of forced redraw attempts when no new desktop frames arrive.
     std::atomic<int> m_redrawCountdown{ 0 };
+
+    bool m_enableMirror{ false };
+    HWND m_mirrorHwnd{ nullptr };
+#if defined(_DEBUG) && defined(WINVERT_OBS_MIRROR)
+    ::Microsoft::WRL::ComPtr<IDXGIFactory2> m_mirrorFactory;
+    ::Microsoft::WRL::ComPtr<IDXGISwapChain1> m_mirrorSwapChain;
+#endif
 };

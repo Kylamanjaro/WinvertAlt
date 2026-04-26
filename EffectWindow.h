@@ -23,6 +23,8 @@ public:
 
     // Called by DuplicationThread to render a frame
     void Render(ID3D11Texture2D* frame, unsigned long long lastPresentQpc);
+    ::Microsoft::WRL::ComPtr<ID3D11Texture2D> GetLastRenderedTexture();
+    RECT GetDesktopRect() const { return m_desktopRect; }
 
     // ISubscriber implementation (now a no-op, but required to compile)
     void OnFrameReady(::Microsoft::WRL::ComPtr<ID3D11Texture2D> texture) override;
@@ -41,10 +43,6 @@ private:
     // Geometry/placement
     RECT m_desktopRect{};
     HWND m_hwnd{};
-    HWND m_mirrorHwnd{};
-    bool m_mirrorEnabled{ false };
-    int  m_mirrorWidth{ 0 };
-    int  m_mirrorHeight{ 0 };
 
     // Device & DXGI
     ::Microsoft::WRL::ComPtr<ID3D11Device>        m_d3d;
@@ -52,7 +50,6 @@ private:
     ::Microsoft::WRL::ComPtr<ID3D11DeviceContext> m_immediateCtx; // Shared immediate context
     ::Microsoft::WRL::ComPtr<IDXGIFactory2>       m_factory;
     ::Microsoft::WRL::ComPtr<IDXGISwapChain1>     m_swapChain;
-    ::Microsoft::WRL::ComPtr<IDXGISwapChain1>     m_mirrorSwapChain;
 
     // Pipeline
     ::Microsoft::WRL::ComPtr<ID3D11RenderTargetView> m_rtv;
@@ -90,6 +87,10 @@ private:
     // Threading
     std::atomic<bool> m_run{ false };
     bool m_isHidden{ false };
+
+    // Additional render capture for mirror output
+    ::Microsoft::WRL::ComPtr<ID3D11Texture2D>        m_lastRenderedTex;
+    std::mutex                                      m_lastRenderMutex;
 
     // Source duplication thread (not owned)
     DuplicationThread* m_thread{ nullptr };

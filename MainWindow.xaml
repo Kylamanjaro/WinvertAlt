@@ -249,6 +249,10 @@
                                     <TextBlock Text="Hotkeys" FontWeight="SemiBold"/>
                                 </Expander.Header>
                                 <StackPanel Spacing="8" Padding="8,4,0,8">
+                                    <TextBlock
+                                        Text="Hotkey rules: use at least one modifier (Ctrl/Alt/Shift/Win) plus a non-modifier key. Some combos may fail if reserved or already used by another app."
+                                        TextWrapping="WrapWholeWords"
+                                        Opacity="0.78"/>
                                     <Grid ColumnSpacing="10" RowSpacing="5">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>

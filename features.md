@@ -15,7 +15,7 @@
 - Three global hotkeys:
 - Invert/Add (default `Ctrl+Alt+I`)
 - Filter/Add (default `Ctrl+Alt+F`)
-- Remove Last (default `Ctrl+Alt+R`)
+- Remove Last (default `Ctrl+Alt+D`)
 - Rebind each hotkey from settings.
 - Hotkeys remain active while control panel is hidden.
 

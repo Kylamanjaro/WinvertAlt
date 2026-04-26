@@ -104,6 +104,7 @@ namespace winrt::Winvert4::implementation
         static HHOOK s_mouseHook;
         static HHOOK s_keyboardHook;
         static MainWindow* s_samplingInstance;
+        static MainWindow* s_rebindingInstance;
         static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam);
         static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam);
 
@@ -168,7 +169,7 @@ namespace winrt::Winvert4::implementation
         UINT m_hotkeyFilterMod{ MOD_CONTROL | MOD_ALT };
         UINT m_hotkeyFilterVk{ 'F' };
         UINT m_hotkeyRemoveMod{ MOD_CONTROL | MOD_ALT };
-        UINT m_hotkeyRemoveVk{ 'R' };
+        UINT m_hotkeyRemoveVk{ 'D' };
 
         enum class PendingEffect { None, Invert, Filter };
 
@@ -177,7 +178,10 @@ namespace winrt::Winvert4::implementation
         int m_favoriteFilterIndex{ -1 };
         PendingEffect m_pendingEffect{ PendingEffect::None };
 
-        void RegisterAllHotkeys();
+        bool RegisterAllHotkeys(std::wstring* outError = nullptr);
+        void BeginRebindCapture(RebindingState target, wchar_t const* promptText);
+        void EndRebindCapture(bool cancelled, wchar_t const* statusText = nullptr);
+        void ApplyRebindCombination(UINT vk, UINT mod);
         void InitializeTrayIcon();
         void RemoveTrayIcon();
         void ShowTrayMenu();

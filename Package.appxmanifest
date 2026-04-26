@@ -9,9 +9,9 @@
   IgnorableNamespaces="uap desktop rescap">
 
   <Identity
-    Name="Vibe.Winvert"
-    Publisher="CN=kbuch"
-    Version="1.0.11.0" />
+    Name="Vibe.54945B4883422"
+    Publisher="CN=9791A8AE-764C-4C9A-BE8C-3E8527720751"
+    Version="1.0.25.0" />
 
   <mp:PhoneIdentity PhoneProductId="618e947e-58f6-4a0d-8918-66be32b6f66c" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 

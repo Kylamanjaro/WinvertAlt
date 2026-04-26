@@ -16,6 +16,31 @@
 using Microsoft::WRL::ComPtr;
 
 namespace {
+static LRESULT CALLBACK MirrorWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    if (msg == WM_NCHITTEST) { return HTTRANSPARENT; }
+    if (msg == WM_MOUSEACTIVATE) { return MA_NOACTIVATE; }
+    if (msg == WM_CLOSE) { ShowWindow(hwnd, SW_HIDE); return 0; }
+    if (msg == WM_GETMINMAXINFO)
+    {
+        auto info = reinterpret_cast<PMINMAXINFO>(lParam);
+        HMONITOR hmon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        if (hmon)
+        {
+            MONITORINFO mi{ sizeof(mi) };
+            if (GetMonitorInfoW(hmon, &mi))
+            {
+                info->ptMaxPosition.x = mi.rcWork.left - mi.rcMonitor.left;
+                info->ptMaxPosition.y = mi.rcWork.top - mi.rcMonitor.top;
+                info->ptMaxSize.x = mi.rcWork.right - mi.rcWork.left;
+                info->ptMaxSize.y = mi.rcWork.bottom - mi.rcWork.top;
+            }
+        }
+        return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
 // ---- Diagnostics: probe a small patch in the texture for non-zero pixels ----
 static RECT CenterRect(UINT texW, UINT texH, UINT sampleW, UINT sampleH)
 {
@@ -111,8 +136,9 @@ static bool ProbeTexturePatch(
 
 // ===== DuplicationThread (implementation aligned with DuplicationThread.h) =====
 
-DuplicationThread::DuplicationThread(IDXGIAdapter1* adapter, IDXGIOutput1* output)
+DuplicationThread::DuplicationThread(IDXGIAdapter1* adapter, IDXGIOutput1* output, bool enableMirror)
     : m_output(output)
+    , m_enableMirror(enableMirror)
 {
     // Cache output rect
     DXGI_OUTPUT_DESC outDesc{};
@@ -163,6 +189,16 @@ void DuplicationThread::Stop()
         m_subCv.notify_all();
     }
     if (m_thread.joinable()) m_thread.join();
+    
+#if defined(_DEBUG) && defined(WINVERT_OBS_MIRROR)
+    if (m_mirrorHwnd) {
+        DestroyWindow(m_mirrorHwnd);
+        m_mirrorHwnd = nullptr;
+    }
+    m_mirrorSwapChain.Reset();
+    m_mirrorFactory.Reset();
+#endif
+    
     m_duplication.Reset();
     m_fullTexture.Reset();
     m_context.Reset();
@@ -276,15 +312,148 @@ void DuplicationThread::ThreadProc()
         }
     }
 
+#if defined(_DEBUG) && defined(WINVERT_OBS_MIRROR)
+    if (m_enableMirror)
+    {
+        winvert4::Log("DT: mirror creation requested for this output");
+        DXGI_OUTPUT_DESC outputDesc{};
+        if (SUCCEEDED(m_output->GetDesc(&outputDesc)))
+        {
+            const int kMirrorClientWidth = outputDesc.DesktopCoordinates.right - outputDesc.DesktopCoordinates.left;
+            const int kMirrorClientHeight = outputDesc.DesktopCoordinates.bottom - outputDesc.DesktopCoordinates.top;
+
+            // Register window class
+            static ATOM s_mirrorAtom = 0;
+            if (!s_mirrorAtom) {
+                WNDCLASSEXW wcex{ sizeof(WNDCLASSEXW) };
+                wcex.style = CS_HREDRAW | CS_VREDRAW;
+                wcex.lpfnWndProc = &MirrorWindowProc;
+                wcex.cbClsExtra = 0;
+                wcex.cbWndExtra = 0;
+                wcex.hInstance = GetModuleHandleW(nullptr);
+                wcex.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+                wcex.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+                wcex.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+                wcex.lpszMenuName = nullptr;
+                wcex.lpszClassName = L"Winvert_EarlyMirrorWindow";
+                wcex.hIconSm = LoadIconW(nullptr, IDI_APPLICATION);
+                s_mirrorAtom = RegisterClassExW(&wcex);
+            }
+
+            const DWORD mirrorStyle = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
+            RECT mirrorRect{ 0, 0, kMirrorClientWidth, kMirrorClientHeight };
+            AdjustWindowRectEx(&mirrorRect, mirrorStyle, FALSE, 0);
+            const int mirrorWindowWidth = mirrorRect.right - mirrorRect.left;
+            const int mirrorWindowHeight = mirrorRect.bottom - mirrorRect.top;
+            const int mirrorWindowLeft = outputDesc.DesktopCoordinates.left + 50;
+            const int mirrorWindowTop = outputDesc.DesktopCoordinates.top + 50;
+
+            m_mirrorHwnd = CreateWindowExW(
+                WS_EX_APPWINDOW | WS_EX_WINDOWEDGE | WS_EX_NOACTIVATE,
+                L"Winvert_EarlyMirrorWindow", L"Winvert Debug Mirror (Early)",
+                mirrorStyle, mirrorWindowLeft, mirrorWindowTop,
+                mirrorWindowWidth, mirrorWindowHeight,
+                nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+
+            if (!m_mirrorHwnd) {
+                winvert4::Logf("DT: mirror window creation FAILED err=%u", GetLastError());
+            }
+            else {
+                // Force the mirror to be a true top-level app window and visible to shell enumeration.
+                LONG_PTR exStyle = GetWindowLongPtrW(m_mirrorHwnd, GWL_EXSTYLE);
+                exStyle |= WS_EX_APPWINDOW;
+                exStyle &= ~WS_EX_TOOLWINDOW;
+                exStyle |= WS_EX_NOACTIVATE;
+                SetWindowLongPtrW(m_mirrorHwnd, GWL_EXSTYLE, exStyle);
+
+                LONG_PTR style = GetWindowLongPtrW(m_mirrorHwnd, GWL_STYLE);
+                style |= WS_OVERLAPPEDWINDOW | WS_VISIBLE;
+                SetWindowLongPtrW(m_mirrorHwnd, GWL_STYLE, style);
+
+                SetParent(m_mirrorHwnd, nullptr);
+                SetWindowPos(m_mirrorHwnd, HWND_TOP, mirrorWindowLeft, mirrorWindowTop,
+                    mirrorWindowWidth, mirrorWindowHeight,
+                    SWP_SHOWWINDOW | SWP_NOACTIVATE);
+                winvert4::Logf("DT: mirror window HWND=%p created and shown", m_mirrorHwnd);
+                ComPtr<IDXGIDevice> dxgiDevice;
+                if (SUCCEEDED(m_device.As(&dxgiDevice))) {
+                    ComPtr<IDXGIAdapter> dxgiAdapter;
+                    if (SUCCEEDED(dxgiDevice->GetAdapter(&dxgiAdapter))) {
+                        if (FAILED(dxgiAdapter->GetParent(IID_PPV_ARGS(&m_mirrorFactory)))) {
+                            winvert4::Log("DT: mirror factory query FAILED; trying CreateDXGIFactory2 fallback");
+                        }
+                    }
+                }
+
+                if (!m_mirrorFactory) {
+                    HRESULT hrFactory = CreateDXGIFactory2(0, IID_PPV_ARGS(&m_mirrorFactory));
+                    if (FAILED(hrFactory)) {
+                        winvert4::Logf("DT: CreateDXGIFactory2 fallback FAILED hr=0x%08X", hrFactory);
+                    }
+                }
+
+                if (!m_mirrorFactory) {
+                    winvert4::Log("DT: mirror factory is not available");
+                }
+
+                if (m_mirrorFactory) {
+                    DXGI_SWAP_CHAIN_DESC1 sd{};
+                    sd.Width = kMirrorClientWidth;
+                    sd.Height = kMirrorClientHeight;
+                    sd.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+                    sd.SampleDesc.Count = 1;
+                    sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+                    sd.BufferCount = 2;
+                    sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+                    sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+
+                    HRESULT hrMirror = m_mirrorFactory->CreateSwapChainForHwnd(
+                        m_device.Get(), m_mirrorHwnd, &sd, nullptr, nullptr, &m_mirrorSwapChain);
+                    if (FAILED(hrMirror)) {
+                        winvert4::Logf("DT: mirror swapchain create failed hr=0x%08X", hrMirror);
+                        ShowWindow(m_mirrorHwnd, SW_SHOW);
+                        UpdateWindow(m_mirrorHwnd);
+                        winvert4::Log("DT: mirror window shown without swapchain");
+                    } else {
+                        ShowWindow(m_mirrorHwnd, SW_SHOWMAXIMIZED);
+                        UpdateWindow(m_mirrorHwnd);
+                        winvert4::Log("DT: early debug mirror window created");
+                    }
+                }
+            }
+        }
+        else
+        {
+            winvert4::Log("DT: mirror output GetDesc FAILED");
+        }
+    }
+#endif
+
     // Frame loop
     while (m_isRunning) {
+#if defined(_DEBUG) && defined(WINVERT_OBS_MIRROR)
+        if (m_mirrorHwnd) {
+            MSG msg;
+            while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+        }
+#endif
         {
             std::unique_lock<std::mutex> lk(m_subMutex);
             if (m_subscriptions.empty())
             {
-                m_subCv.wait_for(lk, std::chrono::milliseconds(50), [this] { return !m_isRunning || !m_subscriptions.empty(); });
-                if (!m_isRunning) break;
-                if (m_subscriptions.empty()) continue;
+                bool hasMirror = false;
+#if defined(_DEBUG) && defined(WINVERT_OBS_MIRROR)
+                hasMirror = (m_mirrorSwapChain && m_mirrorHwnd);
+#endif
+                if (!hasMirror)
+                {
+                    m_subCv.wait_for(lk, std::chrono::milliseconds(50), [this] { return !m_isRunning || !m_subscriptions.empty(); });
+                    if (!m_isRunning) break;
+                    if (m_subscriptions.empty()) continue;
+                }
             }
         }
 
@@ -333,8 +502,8 @@ void DuplicationThread::ThreadProc()
         }
 
         // Render to all subscribers on this thread
+        std::vector<Subscription> subsCopy;
         if (m_fullTexture) {
-            std::vector<Subscription> subsCopy;
             {
                 std::lock_guard<std::mutex> lk(m_subMutex);
                 subsCopy = m_subscriptions;
@@ -349,6 +518,48 @@ void DuplicationThread::ThreadProc()
             }
             m_redrawCountdown.store(0, std::memory_order_relaxed);
         }
+
+#if defined(_DEBUG) && defined(WINVERT_OBS_MIRROR)
+        // Render to mirror window (raw unprocessed output with effect overlay)
+        if (m_mirrorSwapChain && m_mirrorHwnd && m_fullTexture) {
+            ComPtr<ID3D11Texture2D> mirrorBackBuf;
+            if (SUCCEEDED(m_mirrorSwapChain->GetBuffer(0, IID_PPV_ARGS(&mirrorBackBuf))) && mirrorBackBuf) {
+                m_context->CopyResource(mirrorBackBuf.Get(), m_fullTexture.Get());
+
+                ComPtr<ID3D11Texture2D> effectTex;
+                RECT effectRect{};
+                for (auto& s : subsCopy) {
+                    if (!s.Subscriber) continue;
+                    auto* ew = static_cast<EffectWindow*>(s.Subscriber);
+                    effectTex = ew->GetLastRenderedTexture();
+                    if (effectTex) {
+                        effectRect = ew->GetDesktopRect();
+                        break;
+                    }
+                }
+
+                if (effectTex) {
+                    D3D11_TEXTURE2D_DESC srcDesc{};
+                    effectTex->GetDesc(&srcDesc);
+                    D3D11_BOX srcBox{ 0, 0, 0, srcDesc.Width, srcDesc.Height, 1 };
+                    LONG dstX = effectRect.left - m_outputRect.left;
+                    LONG dstY = effectRect.top  - m_outputRect.top;
+                    m_context->CopySubresourceRegion(
+                        mirrorBackBuf.Get(), 0,
+                        dstX, dstY, 0,
+                        effectTex.Get(), 0,
+                        &srcBox);
+                }
+
+                HRESULT hrPresent = m_mirrorSwapChain->Present(1, 0);
+                if (FAILED(hrPresent)) {
+                    winvert4::Logf("DT: mirror Present failed hr=0x%08X", hrPresent);
+                }
+            } else {
+                winvert4::Log("DT: mirror GetBuffer failed");
+            }
+        }
+#endif
 
         m_duplication->ReleaseFrame();
     }
