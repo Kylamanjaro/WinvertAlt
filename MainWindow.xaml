@@ -11,6 +11,71 @@
 
     <Grid>
         <Grid.Resources>
+            <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="WinvertPageBackgroundBrush" Color="#FFD8DEE6"/>
+
+                    <SolidColorBrush x:Key="WinvertButtonBackgroundBrush" Color="#FFD0D8E3"/>
+                    <SolidColorBrush x:Key="WinvertButtonBorderBrush" Color="#FF8FA0B4"/>
+                    <SolidColorBrush x:Key="WinvertButtonForegroundBrush" Color="#FF0F172A"/>
+
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FFDDE4EC"/>
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#FFC2CDD9"/>
+                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#FF7D8EA4"/>
+                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#FF70839B"/>
+                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#FF0F172A"/>
+                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#FF0F172A"/>
+
+                    <Style TargetType="Button">
+                        <Setter Property="Background" Value="{ThemeResource WinvertButtonBackgroundBrush}"/>
+                        <Setter Property="BorderBrush" Value="{ThemeResource WinvertButtonBorderBrush}"/>
+                        <Setter Property="BorderThickness" Value="1"/>
+                        <Setter Property="Foreground" Value="{ThemeResource WinvertButtonForegroundBrush}"/>
+                    </Style>
+
+                    <Style TargetType="ToggleButton">
+                        <Setter Property="Background" Value="{ThemeResource WinvertButtonBackgroundBrush}"/>
+                        <Setter Property="BorderBrush" Value="{ThemeResource WinvertButtonBorderBrush}"/>
+                        <Setter Property="BorderThickness" Value="1"/>
+                        <Setter Property="Foreground" Value="{ThemeResource WinvertButtonForegroundBrush}"/>
+                    </Style>
+
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="WinvertPageBackgroundBrush" Color="#FF16181C"/>
+
+                    <SolidColorBrush x:Key="WinvertButtonBackgroundBrush" Color="#FF2A2E35"/>
+                    <SolidColorBrush x:Key="WinvertButtonBorderBrush" Color="#FF4B525E"/>
+                    <SolidColorBrush x:Key="WinvertButtonForegroundBrush" Color="#FFECEFF4"/>
+
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FF363B44"/>
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#FF434A56"/>
+                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#FF5A6372"/>
+                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#FF6A7486"/>
+                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#FFF3F6FB"/>
+                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#FFFFFFFF"/>
+
+                    <Style TargetType="Button">
+                        <Setter Property="Background" Value="{ThemeResource WinvertButtonBackgroundBrush}"/>
+                        <Setter Property="BorderBrush" Value="{ThemeResource WinvertButtonBorderBrush}"/>
+                        <Setter Property="BorderThickness" Value="1"/>
+                        <Setter Property="Foreground" Value="{ThemeResource WinvertButtonForegroundBrush}"/>
+                    </Style>
+
+                    <Style TargetType="ToggleButton">
+                        <Setter Property="Background" Value="{ThemeResource WinvertButtonBackgroundBrush}"/>
+                        <Setter Property="BorderBrush" Value="{ThemeResource WinvertButtonBorderBrush}"/>
+                        <Setter Property="BorderThickness" Value="1"/>
+                        <Setter Property="Foreground" Value="{ThemeResource WinvertButtonForegroundBrush}"/>
+                    </Style>
+
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Default">
+                    <!-- Keep dark/default behavior stock by mapping to WinUI defaults -->
+                    <StaticResource x:Key="WinvertPageBackgroundBrush" ResourceKey="LayerFillColorDefaultBrush"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
             <!-- Template for a single Color Map row -->
             <DataTemplate x:Key="ColorMapRowTemplate">
                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="2" Padding="2">
@@ -77,9 +142,12 @@
                     </Grid>
                 </Border>
             </DataTemplate>
+            </ResourceDictionary>
         </Grid.Resources>
+        <Border Background="{ThemeResource WinvertPageBackgroundBrush}"/>
+
         <!-- Main Control Panel with Tabs -->
-        <StackPanel x:Name="RootPanel" Orientation="Vertical" HorizontalAlignment="Stretch" VerticalAlignment="Top" Spacing="5" Padding="10">
+        <StackPanel x:Name="RootPanel" Background="{ThemeResource WinvertPageBackgroundBrush}" Orientation="Vertical" HorizontalAlignment="Stretch" VerticalAlignment="Top" Spacing="5" Padding="10">
             <TabView x:Name="RegionsTabView"
                      IsAddTabButtonVisible="True"
                      TabWidthMode="SizeToContent"
@@ -87,7 +155,7 @@
                      TabCloseRequested="RegionsTabView_TabCloseRequested"
                      SelectionChanged="RegionsTabView_SelectionChanged">
                 <TabView.TabStripFooter>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" RequestedTheme="Light" MinWidth="40" Margin="8,0,0,0">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" MinWidth="40" Margin="8,0,0,0">
                         <Button x:Name="SettingsButton" Click="SettingsButton_Click" Width="32" Height="32" MinWidth="32" MinHeight="32" Padding="0" ToolTipService.ToolTip="Open Settings">
                             <Image Source="Assets/settings.svg" Width="20" Height="20" IsHitTestVisible="False"/>
                         </Button>
@@ -102,7 +170,7 @@
                      Message="Use a hotkey or the + button to create a region."
                      Closed="InfoBar_Closed"/>
 
-            <Grid ColumnSpacing="5" RequestedTheme="Light" HorizontalAlignment="Center">
+            <Grid ColumnSpacing="5" HorizontalAlignment="Center">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
@@ -135,7 +203,7 @@
         </StackPanel>
 
         <!-- Settings Panel (Initially Hidden) -->
-        <Grid x:Name="SettingsPanel" Visibility="Collapsed">
+        <Grid x:Name="SettingsPanel" Background="{ThemeResource WinvertPageBackgroundBrush}" Visibility="Collapsed">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>

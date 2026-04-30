@@ -36,6 +36,13 @@ using namespace winrt::Windows::Foundation;
 
 namespace
 {
+    #ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
+    #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
+    #endif
+    #ifndef DWMWA_BORDER_COLOR
+    #define DWMWA_BORDER_COLOR 34
+    #endif
+
     // For self-test helper use before definitions
     static bool PathIsDir(const std::wstring& p);
     static std::wstring JoinPath(const std::wstring& a, const std::wstring& b);
@@ -244,6 +251,40 @@ namespace winrt::Winvert4::implementation
         auto windowNative{ this->try_as<::IWindowNative>() };
         winrt::check_hresult(windowNative->get_WindowHandle(&m_mainHwnd));
         winvert4::Logf("MainWindow: got HWND=%p", (void*)m_mainHwnd);
+
+        auto rootElement = this->Content().try_as<winrt::Microsoft::UI::Xaml::FrameworkElement>();
+
+        auto applyWindowThemeChrome = [this, rootElement]()
+        {
+            if (!m_mainHwnd) return;
+            bool isDark = false;
+            if (rootElement)
+            {
+                isDark = (rootElement.ActualTheme() == winrt::Microsoft::UI::Xaml::ElementTheme::Dark);
+            }
+            const BOOL useDarkTitleBar = isDark ? TRUE : FALSE;
+            const COLORREF borderColor = isDark ? RGB(58, 63, 72) : RGB(188, 196, 206);
+
+            const HRESULT hrTitleBar = DwmSetWindowAttribute(
+                m_mainHwnd,
+                DWMWA_USE_IMMERSIVE_DARK_MODE,
+                &useDarkTitleBar,
+                sizeof(useDarkTitleBar));
+            const HRESULT hrBorder = DwmSetWindowAttribute(
+                m_mainHwnd,
+                DWMWA_BORDER_COLOR,
+                &borderColor,
+                sizeof(borderColor));
+
+            winvert4::Logf("MainWindow: chrome theme apply dark=%d hrTitle=0x%08X hrBorder=0x%08X",
+                isDark ? 1 : 0, hrTitleBar, hrBorder);
+        };
+
+        applyWindowThemeChrome();
+        if (rootElement)
+        {
+            rootElement.ActualThemeChanged([applyWindowThemeChrome](auto const&, auto const&) { applyWindowThemeChrome(); });
+        }
 
         m_outputManager = std::make_unique<OutputManager>();
         m_outputManager->Initialize();
